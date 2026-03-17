@@ -1,0 +1,89 @@
+{
+  "ConfigVersion": "1.0.0",
+  "Apps": [
+    {
+      "Name": "Google Chrome",
+      "Description": "Web browser",
+      "Category": "Browsers",
+      "Enabled": true,
+      "InstallerSourceType": "FileServer",
+      "InstallerPath": "C:\\Installers\\Repository\\Google Chrome\\installer.exe",
+      "SilentArguments": "/silent /install",
+      "WingetId": "",
+      "WingetArguments": "--silent --accept-package-agreements --accept-source-agreements",
+      "PrimaryDetection": {
+        "Type": "RegistryDisplayName",
+        "Value": "Google Chrome"
+      },
+      "SecondaryDetection": {
+        "Type": "FileExists",
+        "Value": "%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe"
+      },
+      "IconPath": "C:\\Installers\\Repository\\Google Chrome\\chrome.png",
+      "RequiresAdmin": true
+    },
+    {
+      "Name": "Mozilla Firefox",
+      "Description": "Open-source browser",
+      "Category": "Browsers",
+      "Enabled": true,
+      "InstallerSourceType": "FileServer",
+      "InstallerPath": "C:\\Installers\\Repository\\Mozilla Firefox\\installer.exe",
+      "SilentArguments": "/S",
+      "WingetId": "",
+      "WingetArguments": "--silent --accept-package-agreements --accept-source-agreements",
+      "PrimaryDetection": {
+        "Type": "RegistryDisplayName",
+        "Value": "Mozilla Firefox"
+      },
+      "SecondaryDetection": {
+        "Type": "FileExists",
+        "Value": "%ProgramFiles%\\Mozilla Firefox\\firefox.exe"
+      },
+      "IconPath": "C:\\Installers\\Repository\\Mozilla Firefox\\firefox.png",
+      "RequiresAdmin": true
+    },
+    {
+      "Name": "Discord",
+      "Description": "Team chat and voice",
+      "Category": "Communication",
+      "Enabled": true,
+      "InstallerSourceType": "FileServer",
+      "InstallerPath": "C:\\Installers\\Repository\\Discord\\installer.exe",
+      "SilentArguments": "/S",
+      "WingetId": "",
+      "WingetArguments": "--silent --accept-package-agreements --accept-source-agreements",
+      "PrimaryDetection": {
+        "Type": "RegistryDisplayName",
+        "Value": "Discord"
+      },
+      "SecondaryDetection": {
+        "Type": "FileExists",
+        "Value": "%LocalAppData%\\Discord\\Update.exe"
+      },
+      "IconPath": "C:\\Installers\\Repository\\Discord\\discord.png",
+      "RequiresAdmin": false
+    },
+    {
+      "Name": "7-Zip",
+      "Description": "File archiver",
+      "Category": "Utilities",
+      "Enabled": true,
+      "InstallerSourceType": "Winget",
+      "InstallerPath": "",
+      "SilentArguments": "",
+      "WingetId": "7zip.7zip",
+      "WingetArguments": "--silent --accept-package-agreements --accept-source-agreements",
+      "PrimaryDetection": {
+        "Type": "RegistryDisplayName",
+        "Value": "7-Zip"
+      },
+      "SecondaryDetection": {
+        "Type": "FileExists",
+        "Value": "%ProgramFiles%\\7-Zip\\7zFM.exe"
+      },
+      "IconPath": "",
+      "RequiresAdmin": true
+    }
+  ]
+}

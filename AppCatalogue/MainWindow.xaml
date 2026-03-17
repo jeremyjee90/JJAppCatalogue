@@ -1,0 +1,194 @@
+<Window x:Class="AppCatalogue.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="App Catalogue"
+        Height="760"
+        Width="1160"
+        MinHeight="640"
+        MinWidth="920"
+        Loaded="Window_Loaded"
+        Background="#EFF3F7">
+    <Window.Resources>
+        <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="PanelBorderBrush" Color="#D4DBE5" />
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#1E2A36" />
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#4D6075" />
+        <SolidColorBrush x:Key="ActionBrush" Color="#1E73C5" />
+        <SolidColorBrush x:Key="ActionHoverBrush" Color="#155A98" />
+
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource ActionBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="13,6" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource ActionHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource PanelBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="16"
+                Margin="0,0,0,14">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left">
+                    <TextBlock Text="App Catalogue"
+                               FontSize="30"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource PrimaryTextBrush}" />
+                    <TextBlock Text="Install approved software from your managed local catalogue."
+                               Margin="0,4,0,0"
+                               Foreground="{StaticResource SecondaryTextBrush}" />
+                    <TextBlock Text="{Binding ConfigVersionText}"
+                               Margin="0,8,0,0"
+                               Foreground="{StaticResource SecondaryTextBrush}" />
+                </StackPanel>
+
+                <Button DockPanel.Dock="Right"
+                        Content="Reload Apps"
+                        Width="130"
+                        Height="40"
+                        Click="ReloadAppsButton_Click"
+                        Style="{StaticResource ActionButtonStyle}" />
+            </DockPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Apps}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Width="350"
+                                Height="220"
+                                Margin="0,0,14,14"
+                                Padding="16"
+                                Background="{StaticResource PanelBrush}"
+                                BorderBrush="{StaticResource PanelBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="11">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <DockPanel Grid.Row="0">
+                                    <Grid Width="54" Height="54" DockPanel.Dock="Left" Margin="0,0,12,0">
+                                        <Border Background="#DDE6F3" CornerRadius="8" />
+                                        <Image Source="{Binding Icon}" Stretch="UniformToFill" />
+                                        <TextBlock Text="{Binding Initial}"
+                                                   FontSize="22"
+                                                   FontWeight="Bold"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="#58708A">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasIcon}" Value="False">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontSize="22"
+                                                   FontWeight="Bold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}" />
+                                        <TextBlock Text="{Binding Category}"
+                                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                    </StackPanel>
+                                </DockPanel>
+
+                                <TextBlock Grid.Row="1"
+                                           Text="{Binding Description}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,10,0,0"
+                                           Foreground="{StaticResource SecondaryTextBrush}" />
+
+                                <Grid Grid.Row="2" Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button Content="{Binding ActionButtonText}"
+                                            Width="112"
+                                            Height="38"
+                                            Click="ActionButton_Click"
+                                            IsEnabled="{Binding CanRunAction}"
+                                            Style="{StaticResource ActionButtonStyle}" />
+
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center">
+                                        <TextBlock Text="Status:"
+                                                   Margin="0,0,6,0"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                        <TextBlock Text="{Binding Status}"
+                                                   FontWeight="Bold"
+                                                   Foreground="{Binding StatusBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <Border Grid.Row="2"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource PanelBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="12"
+                Margin="0,14,0,0">
+            <TextBlock Text="{Binding StatusMessage}"
+                       Foreground="{StaticResource SecondaryTextBrush}" />
+        </Border>
+    </Grid>
+</Window>

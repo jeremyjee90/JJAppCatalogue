@@ -1,0 +1,312 @@
+<Window x:Class="AppCatalogueAdmin.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AppCatalogueAdmin"
+        Height="860"
+        Width="1460"
+        MinHeight="760"
+        MinWidth="1200"
+        Loaded="Window_Loaded"
+        Background="#E8EDF4">
+    <Window.Resources>
+        <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="PanelBorderBrush" Color="#C8D3E1" />
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#1B2734" />
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#4F6379" />
+        <SolidColorBrush x:Key="ActionBrush" Color="#1B73C7" />
+        <SolidColorBrush x:Key="ActionHoverBrush" Color="#135892" />
+        <SolidColorBrush x:Key="SecondaryButtonBrush" Color="#536779" />
+        <SolidColorBrush x:Key="DropZoneBrush" Color="#F4FAFF" />
+
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource ActionBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}" CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource ActionHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource SecondaryButtonBrush}" />
+        </Style>
+
+        <Style x:Key="LabelStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="33" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="BorderBrush" Value="#B9C7D8" />
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="33" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="15" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="360" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="App Catalogue Packaging Console" FontSize="30" FontWeight="Bold" Foreground="{StaticResource PrimaryTextBrush}" />
+                    <TextBlock Text="Import installers, manage catalogue entries, and save clean endpoint config." Margin="0,4,0,2" Foreground="{StaticResource SecondaryTextBrush}" />
+                    <TextBlock x:Name="ConfigPathTextBlock" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="Config Version" Style="{StaticResource LabelStyle}" />
+                    <TextBox x:Name="ConfigVersionTextBox" TextChanged="ConfigVersionTextBox_TextChanged" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Save Config" Width="104" Click="SaveConfigButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                        <Button Content="Reload Config" Width="110" Click="ReloadConfigButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
+                        <Button Content="Validate Config" Width="116" Click="ValidateConfigButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.03*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="1.07*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="Search" Style="{StaticResource LabelStyle}" Margin="0,6,8,0" VerticalAlignment="Center" />
+                        <TextBox x:Name="SearchTextBox" Width="280" Margin="0" TextChanged="SearchTextBox_TextChanged" />
+                    </DockPanel>
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button Content="New App" Width="90" Click="NewAppButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                        <Button Content="Save App" Width="90" Click="SaveAppButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                        <Button Content="Delete App" Width="96" Click="DeleteAppButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
+                        <Button Content="Duplicate App" Width="108" Click="DuplicateAppButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
+                    </StackPanel>
+                    <DataGrid x:Name="AppsDataGrid" Grid.Row="2" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" SelectionChanged="AppsDataGrid_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
+                            <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="1.3*" />
+                            <DataGridCheckBoxColumn Header="Enabled" Binding="{Binding Enabled}" Width="0.8*" />
+                            <DataGridTextColumn Header="InstallerSourceType" Binding="{Binding InstallerSourceType}" Width="1.3*" />
+                            <DataGridTextColumn Header="PrimaryDetection" Binding="{Binding PrimaryDetection.Type}" Width="1.2*" />
+                            <DataGridCheckBoxColumn Header="RequiresAdmin" Binding="{Binding RequiresAdmin}" Width="1*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <GroupBox Header="Installer Import" FontWeight="SemiBold" Margin="0,0,0,10">
+                            <StackPanel Margin="8">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="ImportInstallerButton" Content="Import Installer" Width="128" Click="ImportInstallerButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                                    <Button Content="Browse Installer" Width="130" Click="BrowseInstallerButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
+                                    <Button x:Name="DetectSilentSwitchesButton" Content="Detect Silent Switches" Width="156" Click="DetectSilentSwitchesButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
+                                </StackPanel>
+                                <Border x:Name="ImportDropZone"
+                                        Background="{StaticResource DropZoneBrush}"
+                                        BorderBrush="#76A3D8"
+                                        BorderThickness="2"
+                                        CornerRadius="8"
+                                        Padding="10"
+                                        Margin="0,8,0,0"
+                                        AllowDrop="True"
+                                        DragEnter="ImportDropZone_DragEnter"
+                                        DragOver="ImportDropZone_DragOver"
+                                        DragLeave="ImportDropZone_DragLeave"
+                                        Drop="ImportDropZone_Drop">
+                                    <TextBlock x:Name="DropZoneTextBlock"
+                                               Text="Drag and drop .exe or .msi installer files here"
+                                               FontWeight="SemiBold"
+                                               Foreground="#0A6D5A" />
+                                </Border>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="NameTextBox" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" TextChanged="EditorField_TextChanged" />
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Description" Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="DescriptionTextBox" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Height="66" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" TextChanged="EditorField_TextChanged" />
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Category" Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="CategoryTextBox" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" TextChanged="EditorField_TextChanged" />
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Enabled" Style="{StaticResource LabelStyle}" />
+                            <CheckBox x:Name="EnabledCheckBox" Grid.Row="3" Grid.Column="1" Margin="0,4,0,10" Checked="EditorField_CheckChanged" Unchecked="EditorField_CheckChanged" />
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Installer Source" Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="InstallerSourceTypeComboBox" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" SelectionChanged="InstallerSourceTypeComboBox_SelectionChanged" />
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="Installer Path" Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="InstallerPathTextBox" Grid.Row="5" Grid.Column="1" TextChanged="EditorField_TextChanged" />
+                            <Button x:Name="BrowseInstallerPathButton" Grid.Row="5" Grid.Column="2" Content="Browse" Width="78" Height="33" Click="BrowseInstallerButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
+                            <TextBlock Grid.Row="6" Grid.Column="0" Text="Silent Arguments" Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="SilentArgumentsTextBox" Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2" TextChanged="EditorField_TextChanged" />
+                            <TextBlock Grid.Row="7" Grid.Column="0" Text="Winget Id" Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="WingetIdTextBox" Grid.Row="7" Grid.Column="1" Grid.ColumnSpan="2" TextChanged="EditorField_TextChanged" />
+                            <TextBlock Grid.Row="8" Grid.Column="0" Text="Winget Arguments" Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="WingetArgumentsTextBox" Grid.Row="8" Grid.Column="1" Grid.ColumnSpan="2" TextChanged="EditorField_TextChanged" />
+                            <TextBlock Grid.Row="9" Grid.Column="0" Text="Primary Detection Type" Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="DetectionTypeComboBox" Grid.Row="9" Grid.Column="1" Grid.ColumnSpan="2" SelectionChanged="EditorField_SelectionChanged" />
+                            <TextBlock Grid.Row="10" Grid.Column="0" Text="Primary Detection Value" Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="DetectionValueTextBox" Grid.Row="10" Grid.Column="1" Grid.ColumnSpan="2" TextChanged="EditorField_TextChanged" />
+                            <TextBlock Grid.Row="11" Grid.Column="0" Text="Secondary Detection Type" Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="SecondaryDetectionTypeComboBox" Grid.Row="11" Grid.Column="1" Grid.ColumnSpan="2" SelectionChanged="EditorField_SelectionChanged" />
+                            <TextBlock Grid.Row="12" Grid.Column="0" Text="Secondary Detection Value" Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="SecondaryDetectionValueTextBox" Grid.Row="12" Grid.Column="1" Grid.ColumnSpan="2" TextChanged="EditorField_TextChanged" />
+                            <TextBlock Grid.Row="13" Grid.Column="0" Text="Icon Path" Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="IconPathTextBox" Grid.Row="13" Grid.Column="1" TextChanged="EditorField_TextChanged" />
+                            <Button x:Name="BrowseIconPathButton" Grid.Row="13" Grid.Column="2" Content="Browse" Width="78" Height="33" Click="BrowseIconButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
+                            <TextBlock Grid.Row="14" Grid.Column="0" Text="Requires Admin" Style="{StaticResource LabelStyle}" />
+                            <CheckBox x:Name="RequiresAdminCheckBox" Grid.Row="14" Grid.Column="1" Margin="0,4,0,10" Checked="EditorField_CheckChanged" Unchecked="EditorField_CheckChanged" />
+                        </Grid>
+
+                        <GroupBox Header="Detection Suggestions" FontWeight="SemiBold" Margin="0,0,0,8">
+                            <StackPanel Margin="8">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="SuggestDetectionRuleButton"
+                                            Content="Suggest Detection Rule"
+                                            Width="152"
+                                            Click="SuggestDetectionRuleButton_Click"
+                                            Style="{StaticResource ActionButtonStyle}" />
+                                    <Button x:Name="SetPrimarySuggestionButton"
+                                            Content="Set As Primary"
+                                            Width="118"
+                                            Click="SetPrimarySuggestionButton_Click"
+                                            Style="{StaticResource SecondaryButtonStyle}" />
+                                    <Button x:Name="SetSecondarySuggestionButton"
+                                            Content="Set As Secondary"
+                                            Width="126"
+                                            Click="SetSecondarySuggestionButton_Click"
+                                            Style="{StaticResource SecondaryButtonStyle}" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Button x:Name="TestDetectionButton"
+                                            Content="Test Detection"
+                                            Width="118"
+                                            Click="TestDetectionButton_Click"
+                                            Style="{StaticResource SecondaryButtonStyle}" />
+                                    <Button x:Name="DiscoveryModeButton"
+                                            Content="Discovery Mode"
+                                            Width="118"
+                                            Click="DiscoveryModeButton_Click"
+                                            Style="{StaticResource SecondaryButtonStyle}" />
+                                </StackPanel>
+                                <ListBox x:Name="DetectionSuggestionsListBox"
+                                         Height="112"
+                                         SelectionChanged="DetectionSuggestionsListBox_SelectionChanged" />
+                                <TextBlock x:Name="DetectionSuggestionSummaryTextBlock"
+                                           TextWrapping="Wrap"
+                                           Foreground="{StaticResource SecondaryTextBrush}" />
+                                <GroupBox Header="Explain Detection Rule" FontWeight="SemiBold" Margin="0,8,0,0">
+                                    <TextBox x:Name="DetectionExplanationTextBox"
+                                             Height="140"
+                                             Margin="8"
+                                             IsReadOnly="True"
+                                             Background="#F7FAFD"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="True"
+                                             VerticalScrollBarVisibility="Auto" />
+                                </GroupBox>
+                                <TextBox x:Name="DetectionTestResultTextBox"
+                                         Height="120"
+                                         IsReadOnly="True"
+                                         Background="#F7FAFD"
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Margin="0,8,0,0" />
+                            </StackPanel>
+                        </GroupBox>
+
+                        <TextBlock Text="Command Preview" Style="{StaticResource LabelStyle}" Margin="0,8,0,0" />
+                        <TextBox x:Name="CommandPreviewTextBox" Height="52" IsReadOnly="True" Background="#F7FAFD" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+
+                        <StackPanel Orientation="Horizontal">
+                            <ComboBox x:Name="SuggestionComboBox" Width="360" SelectionChanged="SuggestionComboBox_SelectionChanged" />
+                            <Button Content="Accept Suggestion" Width="130" Click="AcceptSuggestionButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                        </StackPanel>
+                        <TextBlock x:Name="ProbeSummaryTextBlock" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,2,0,8" />
+                        <TextBox x:Name="ProbeOutputTextBox"
+                                 Height="180"
+                                 IsReadOnly="True"
+                                 Background="#F7FAFD"
+                                 TextWrapping="Wrap"
+                                 AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="11" Margin="0,12,0,0">
+            <DockPanel>
+                <TextBlock x:Name="StatusTextBlock" DockPanel.Dock="Left" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}" />
+                <TextBlock x:Name="DirtyIndicatorTextBlock" DockPanel.Dock="Left" VerticalAlignment="Center" FontWeight="Bold" Foreground="#A05500" Margin="14,0,0,0" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

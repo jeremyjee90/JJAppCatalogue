@@ -1,0 +1,24 @@
+# Build artifacts
+bin/
+obj/
+
+# Rider/Visual Studio caches
+.vs/
+*.user
+*.suo
+*.userprefs
+
+# Local SDK/package caches in workspace
+.dotnet/
+.nuget/
+
+# Publish output
+Published/
+Published_AdminUpgrade/
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db
+Desktop.ini
