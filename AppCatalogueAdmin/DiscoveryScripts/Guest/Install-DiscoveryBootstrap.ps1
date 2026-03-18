@@ -6,7 +6,52 @@ $outputDir = Join-Path $discoveryRoot 'Output'
 $scriptsDir = Join-Path $discoveryRoot 'Scripts'
 $logsDir = Join-Path $discoveryRoot 'Logs'
 $taskName = 'AppCatalogueDiscoveryWatcher'
-$sourceDir = Split-Path -Path $PSCommandPath -Parent
+
+function Resolve-ScriptSourceDirectory {
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+        $candidates.Add($PSScriptRoot)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+        $commandParent = Split-Path -Path $PSCommandPath -Parent
+        if (-not [string]::IsNullOrWhiteSpace($commandParent)) {
+            $candidates.Add($commandParent)
+        }
+    }
+
+    $candidates.Add('C:\Discovery\Scripts')
+
+    try {
+        $cwd = (Get-Location).Path
+        if (-not [string]::IsNullOrWhiteSpace($cwd)) {
+            $candidates.Add($cwd)
+        }
+    }
+    catch {
+        # Best effort only.
+    }
+
+    $requiredScripts = @('Run-Discovery.ps1', 'Discovery-Watcher.ps1', 'Discovery-Logging.ps1')
+    foreach ($candidate in ($candidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+        $allPresent = $true
+        foreach ($scriptName in $requiredScripts) {
+            if (-not (Test-Path (Join-Path $candidate $scriptName))) {
+                $allPresent = $false
+                break
+            }
+        }
+
+        if ($allPresent) {
+            return $candidate
+        }
+    }
+
+    throw "Could not locate guest discovery scripts. Checked: $($candidates -join ', ')"
+}
+
+$sourceDir = Resolve-ScriptSourceDirectory
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'Install-DiscoveryBootstrap.ps1 must be run in an elevated PowerShell session.'
