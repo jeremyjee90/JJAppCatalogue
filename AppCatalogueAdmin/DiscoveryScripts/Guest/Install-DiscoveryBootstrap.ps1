@@ -68,6 +68,13 @@ foreach ($scriptName in @('Run-Discovery.ps1', 'Discovery-Watcher.ps1', 'Discove
         throw "Required script missing: $sourcePath"
     }
 
+    $sourceFullPath = [System.IO.Path]::GetFullPath($sourcePath)
+    $destinationFullPath = [System.IO.Path]::GetFullPath($destinationPath)
+
+    if ($sourceFullPath.Equals($destinationFullPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        continue
+    }
+
     Copy-Item -Path $sourcePath -Destination $destinationPath -Force
 }
 
