@@ -15,6 +15,14 @@ public partial class MainWindow
             return;
         }
 
+        if (!SecurityHelper.IsAdministrator())
+        {
+            ShowValidation(
+                "One-Click Discovery requires administrator rights on the host. " +
+                "Please close AppCatalogueAdmin and re-open it with Run as administrator.");
+            return;
+        }
+
         var app = BuildSuggestionContextEntry();
         if (app.InstallerSourceType != InstallerSourceType.FileServer)
         {
@@ -77,14 +85,22 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            _logger.Log($"One-click discovery failed: {ex.Message}");
+            var guidance = ex.Message;
+            if (guidance.Contains("required permission", StringComparison.OrdinalIgnoreCase) ||
+                guidance.Contains("Hyper-V permissions", StringComparison.OrdinalIgnoreCase))
+            {
+                guidance += Environment.NewLine +
+                            "Run AppCatalogueAdmin as Administrator and ensure your account is in local 'Hyper-V Administrators'.";
+            }
+
+            _logger.Log($"One-click discovery failed: {guidance}");
             AppendDiscoveryProgress(new DiscoveryProgressUpdate
             {
                 Stage = DiscoveryProgressStage.Failed,
-                Message = ex.Message,
+                Message = guidance,
                 IsError = true
             });
-            DiscoveryResultSummaryTextBlock.Text = $"Discovery failed: {ex.Message}";
+            DiscoveryResultSummaryTextBlock.Text = $"Discovery failed: {guidance}";
             SetStatus("One-click discovery failed.");
         }
         finally
@@ -388,4 +404,3 @@ public partial class MainWindow
         return builder.ToString().Trim();
     }
 }
-

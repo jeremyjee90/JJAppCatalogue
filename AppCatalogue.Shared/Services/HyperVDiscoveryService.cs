@@ -204,11 +204,36 @@ public sealed class HyperVDiscoveryService
         Import-Module Hyper-V -ErrorAction Stop
         $vmName = '__VM_NAME__'
         $checkpointName = '__CHECKPOINT_NAME__'
-        $vm = Get-VM -Name $vmName -ErrorAction SilentlyContinue
+        try {
+            $vm = Get-VM -Name $vmName -ErrorAction SilentlyContinue
+        }
+        catch {
+            throw "Unable to query Hyper-V VM '$vmName'. Ensure AppCatalogueAdmin is elevated and your account has Hyper-V permissions. $($_.Exception.Message)"
+        }
+
         if ($null -eq $vm) {
+            $availableVms = @()
+            try {
+                $availableVms = Get-VM | Select-Object -ExpandProperty Name
+            }
+            catch {
+                # ignore list failure and return the primary not-found error
+            }
+
+            if ($availableVms.Count -gt 0) {
+                throw "VM not found: $vmName. Available VMs: $($availableVms -join ', ')"
+            }
+
             throw "VM not found: $vmName"
         }
-        $checkpoint = Get-VMCheckpoint -VMName $vmName -Name $checkpointName -ErrorAction SilentlyContinue
+
+        try {
+            $checkpoint = Get-VMCheckpoint -VMName $vmName -Name $checkpointName -ErrorAction SilentlyContinue
+        }
+        catch {
+            throw "Unable to query checkpoint '$checkpointName' for VM '$vmName'. $($_.Exception.Message)"
+        }
+
         if ($null -eq $checkpoint) {
             throw "Checkpoint not found: $checkpointName"
         }

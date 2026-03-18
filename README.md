@@ -205,6 +205,10 @@ When tech clicks `One-Click Discovery` in `AppCatalogueAdmin`:
 ### 6) Troubleshooting
 
 - `VM not found`: verify VM name is exactly `AppCatalogueLab01`
+- `You do not have the required permission` / Hyper-V query fails:
+  - run `AppCatalogueAdmin` as Administrator
+  - add user to local `Hyper-V Administrators` group
+  - sign out/in after group membership change
 - `Checkpoint not found`: ensure `CleanState` exists
 - Timeout waiting for results:
   - guest bootstrap task likely missing/not running
