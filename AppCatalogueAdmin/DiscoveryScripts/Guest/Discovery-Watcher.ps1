@@ -5,52 +5,57 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $discoveryRoot = 'C:\Discovery'
-$inputDir = Join-Path $discoveryRoot 'Input'
-$outputDir = Join-Path $discoveryRoot 'Output'
 $scriptsDir = Join-Path $discoveryRoot 'Scripts'
-$logsDir = Join-Path $discoveryRoot 'Logs'
+$loggingHelperPath = Join-Path $scriptsDir 'Discovery-Logging.ps1'
 
-$jobPath = Join-Path $inputDir 'job.json'
-$triggerPath = Join-Path $inputDir 'run.trigger'
-$lockPath = Join-Path $inputDir 'processing.lock'
-$watcherLogPath = Join-Path $logsDir 'Discovery-Watcher.log'
-$runnerPath = Join-Path $scriptsDir 'Run-Discovery.ps1'
-$hostSignalRegistryPath = 'HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters'
-
-New-Item -Path $inputDir -ItemType Directory -Force | Out-Null
-New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
-New-Item -Path $scriptsDir -ItemType Directory -Force | Out-Null
-New-Item -Path $logsDir -ItemType Directory -Force | Out-Null
-
-function Write-Log {
-    param([string]$Message)
-    $line = "{0:u} {1}" -f (Get-Date), $Message
-    Add-Content -Path $watcherLogPath -Value $line -Encoding UTF8
+if (-not (Test-Path $loggingHelperPath)) {
+    throw "Discovery logging helper was not found: $loggingHelperPath"
 }
 
-function Publish-HostSignal {
+. $loggingHelperPath
+
+$layout = New-DiscoveryLayout -DiscoveryRoot $discoveryRoot
+$jobPath = Join-Path $layout.InputDir 'job.json'
+$triggerPath = Join-Path $layout.InputDir 'run.trigger'
+$lockPath = Join-Path $layout.InputDir 'processing.lock'
+$runnerPath = Join-Path $layout.ScriptsDir 'Run-Discovery.ps1'
+$lastPublishedSignal = ''
+$suppressIdleSignalUntilUtc = Get-Date
+
+function Publish-WatcherSignal {
     param(
         [string]$Stage,
         [string]$Message,
         [string]$JobId = '',
-        [bool]$ResultReady = $false
+        [string]$State = 'InProgress',
+        [bool]$ResultReady = $false,
+        [Nullable[bool]]$Success = $null,
+        [string]$Error = '',
+        [string]$ResultPath = '',
+        [string]$LogPath = ''
     )
 
-    try {
-        New-Item -Path $hostSignalRegistryPath -Force -ErrorAction SilentlyContinue | Out-Null
-        Set-ItemProperty -Path $hostSignalRegistryPath -Name 'AppCatalogueDiscoveryStage' -Value $Stage -Type String -Force
-        Set-ItemProperty -Path $hostSignalRegistryPath -Name 'AppCatalogueDiscoveryMessage' -Value $Message -Type String -Force
-        Set-ItemProperty -Path $hostSignalRegistryPath -Name 'AppCatalogueDiscoveryResultReady' -Value ($(if ($ResultReady) { 'true' } else { 'false' })) -Type String -Force
-        Set-ItemProperty -Path $hostSignalRegistryPath -Name 'AppCatalogueDiscoveryJobId' -Value $JobId -Type String -Force
-        Set-ItemProperty -Path $hostSignalRegistryPath -Name 'AppCatalogueDiscoveryUpdatedUtc' -Value ((Get-Date).ToUniversalTime().ToString('o')) -Type String -Force
+    $fingerprint = "$Stage|$Message|$JobId|$State|$ResultReady|$Error|$ResultPath|$LogPath"
+    if ($fingerprint -eq $script:lastPublishedSignal) {
+        return
     }
-    catch {
-        Write-Log "Watcher host signal update failed: $($_.Exception.Message)"
-    }
+
+    $script:lastPublishedSignal = $fingerprint
+    Publish-DiscoveryHostSignal `
+        -Layout $layout `
+        -JobId $JobId `
+        -Stage $Stage `
+        -Message $Message `
+        -State $State `
+        -ResultReady $ResultReady `
+        -Success $Success `
+        -Error $Error `
+        -ResultPath $ResultPath `
+        -LogPath $LogPath
 }
 
-Write-Log "Watcher started. PollSeconds=$PollSeconds"
-Publish-HostSignal -Stage 'WatcherReady' -Message 'Watcher started and waiting for job.'
+Write-WatcherLog -Layout $layout -Message "WatcherStarted PollSeconds=$PollSeconds"
+Publish-WatcherSignal -Stage 'WatcherStarted' -Message 'Watcher started and waiting for jobs.' -State 'Waiting'
 
 while ($true) {
     try {
@@ -59,49 +64,83 @@ while ($true) {
 
         if (($hasJob -or $hasTrigger) -and -not (Test-Path $lockPath)) {
             if (-not (Test-Path $runnerPath)) {
-                Write-Log "Run script not found at '$runnerPath'. Waiting for next cycle."
-                Publish-HostSignal -Stage 'WatcherError' -Message "Run script missing at '$runnerPath'."
+                $message = "Run-Discovery script missing at '$runnerPath'."
+                Write-WatcherLog -Layout $layout -Message "WatcherError $message"
+                Publish-WatcherSignal -Stage 'DiscoveryFailed' -Message $message -State 'Failed' -ResultReady $false -Error $message
                 Start-Sleep -Seconds $PollSeconds
                 continue
             }
 
             New-Item -Path $lockPath -ItemType File -Force | Out-Null
-            Write-Log 'Discovery job detected. Running Run-Discovery.ps1.'
             $detectedJobId = ''
+
             try {
                 if (Test-Path $jobPath) {
-                    $jobObj = Get-Content -Path $jobPath -Raw -Encoding UTF8 | ConvertFrom-Json
-                    $detectedJobId = [string]$jobObj.JobId
+                    $job = Get-Content -Path $jobPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $detectedJobId = [string]$job.JobId
                 }
             }
             catch {
-                Write-Log "Unable to parse job id: $($_.Exception.Message)"
+                Write-WatcherLog -Layout $layout -Message ("WatcherWarning Failed to parse job id: {0}" -f $_.Exception.Message)
             }
-            Publish-HostSignal -Stage 'JobDetected' -Message 'Watcher detected discovery job and is starting runner.' -JobId $detectedJobId
+
+            $jobLabel = if ([string]::IsNullOrWhiteSpace($detectedJobId)) { '<unknown>' } else { $detectedJobId }
+            Write-WatcherLog -Layout $layout -Message "JobDetected JobId=$jobLabel"
+            Publish-WatcherSignal -Stage 'JobDetected' -Message "Watcher detected job $jobLabel." -JobId $detectedJobId -State 'InProgress'
 
             try {
                 & $runnerPath -JobPath $jobPath
-                Write-Log 'Run-Discovery.ps1 execution finished.'
+                Write-WatcherLog -Layout $layout -Message "JobComplete JobId=$jobLabel"
             }
             catch {
-                Write-Log "Run-Discovery.ps1 failed: $($_.Exception.Message)"
-            }
-            finally {
-                foreach ($cleanupFile in @($triggerPath, $lockPath)) {
-                    if (Test-Path $cleanupFile) {
-                        try { Remove-Item -Path $cleanupFile -Force -ErrorAction SilentlyContinue } catch {}
+                $runnerError = $_.Exception.Message
+                Write-WatcherLog -Layout $layout -Message "RunnerError JobId=$jobLabel Error=$runnerError"
+                $jobContext = $null
+                if (-not [string]::IsNullOrWhiteSpace($detectedJobId)) {
+                    try {
+                        $jobContext = New-DiscoveryJobContext -JobId $detectedJobId -DiscoveryRoot $discoveryRoot
+                    }
+                    catch {
+                        Write-WatcherLog -Layout $layout -Message "WatcherWarning Could not create job context for failure signal: $($_.Exception.Message)"
                     }
                 }
-                Publish-HostSignal -Stage 'WatcherReady' -Message 'Watcher is idle and waiting for next job.'
+                Publish-WatcherSignal `
+                    -Stage 'DiscoveryFailed' `
+                    -Message "Runner failure for job $jobLabel." `
+                    -JobId $detectedJobId `
+                    -State 'Failed' `
+                    -Error $runnerError `
+                    -ResultReady $true `
+                    -Success $false `
+                    -ResultPath $(if ($null -eq $jobContext) { '' } else { $jobContext.ResultPath }) `
+                    -LogPath $(if ($null -eq $jobContext) { '' } else { $jobContext.GuestLogPath })
+            }
+            finally {
+                $script:suppressIdleSignalUntilUtc = (Get-Date).AddSeconds(120)
+                foreach ($cleanupFile in @($triggerPath, $lockPath)) {
+                    if (Test-Path $cleanupFile) {
+                        try {
+                            Remove-Item -Path $cleanupFile -Force -ErrorAction SilentlyContinue
+                        }
+                        catch {
+                            Write-WatcherLog -Layout $layout -Message "CleanupWarning Could not remove '$cleanupFile': $($_.Exception.Message)"
+                        }
+                    }
+                }
+
             }
         }
         elseif (-not (Test-Path $lockPath)) {
-            Publish-HostSignal -Stage 'WatcherReady' -Message 'Watcher is idle and waiting for next job.'
+            if ((Get-Date) -ge $script:suppressIdleSignalUntilUtc) {
+                Publish-WatcherSignal -Stage 'WatcherStarted' -Message 'Watcher idle and waiting for jobs.' -State 'Waiting'
+            }
         }
     }
     catch {
-        Write-Log "Watcher loop error: $($_.Exception.Message)"
-        Publish-HostSignal -Stage 'WatcherError' -Message $_.Exception.Message
+        $errorMessage = $_.Exception.Message
+        Write-WatcherLog -Layout $layout -Message "WatcherLoopError $errorMessage"
+        Publish-WatcherSignal -Stage 'DiscoveryFailed' -Message 'Watcher loop error.' -State 'Failed' -Error $errorMessage
+        $script:suppressIdleSignalUntilUtc = (Get-Date).AddSeconds(60)
     }
 
     Start-Sleep -Seconds $PollSeconds

@@ -953,10 +953,19 @@ public partial class MainWindow : Window
         DetectionTestResultTextBox.Text = string.Empty;
         DiscoveryProgressTextBox.Text = string.Empty;
         DiscoveryResultSummaryTextBlock.Text = string.Empty;
+        DiscoveryRecommendedCommandTextBox.Text = string.Empty;
+        DiscoveryAttemptHistoryListBox.ItemsSource = null;
         DiscoverySilentSuggestionsListBox.ItemsSource = null;
         DiscoveryPrimaryRecommendationTextBlock.Text = string.Empty;
         DiscoverySecondaryRecommendationTextBlock.Text = string.Empty;
         DiscoveryEvidenceTextBox.Text = string.Empty;
+        DiscoveryHostJobPathTextBox.Text = string.Empty;
+        DiscoveryHostLogPathTextBox.Text = string.Empty;
+        DiscoveryGuestLogPathTextBox.Text = string.Empty;
+        DiscoveryStageTextBlock.Text = "Current stage: Not started";
+        DiscoveryFinalStageTextBlock.Text = "Final stage: Not started";
+        SetDiscoveryStateBadge("Ready", "#E4ECF5");
+        SetConfidenceBadge("-", "#E4ECF5");
         _lastDetectionSuggestionResult = null;
         _lastHyperVDiscoveryResult = null;
 
@@ -995,10 +1004,19 @@ public partial class MainWindow : Window
         DetectionTestResultTextBox.Text = string.Empty;
         DiscoveryProgressTextBox.Text = string.Empty;
         DiscoveryResultSummaryTextBlock.Text = string.Empty;
+        DiscoveryRecommendedCommandTextBox.Text = string.Empty;
+        DiscoveryAttemptHistoryListBox.ItemsSource = null;
         DiscoverySilentSuggestionsListBox.ItemsSource = null;
         DiscoveryPrimaryRecommendationTextBlock.Text = string.Empty;
         DiscoverySecondaryRecommendationTextBlock.Text = string.Empty;
         DiscoveryEvidenceTextBox.Text = string.Empty;
+        DiscoveryHostJobPathTextBox.Text = string.Empty;
+        DiscoveryHostLogPathTextBox.Text = string.Empty;
+        DiscoveryGuestLogPathTextBox.Text = string.Empty;
+        DiscoveryStageTextBlock.Text = "Current stage: Not started";
+        DiscoveryFinalStageTextBlock.Text = "Final stage: Not started";
+        SetDiscoveryStateBadge("Ready", "#E4ECF5");
+        SetConfidenceBadge("-", "#E4ECF5");
         _lastDetectionSuggestionResult = null;
         _lastHyperVDiscoveryResult = null;
         _lastImportedRepositoryFolder = string.Empty;
@@ -1014,6 +1032,7 @@ public partial class MainWindow : Window
         var isWinget = InstallerSourceTypeComboBox.SelectedItem is InstallerSourceType source &&
                        source == InstallerSourceType.Winget;
         var discoveryEnabled = !isWinget && !_isDiscoveryRunning;
+        var hasDiscoveryResult = _lastHyperVDiscoveryResult is not null;
 
         InstallerPathTextBox.IsEnabled = !isWinget;
         SilentArgumentsTextBox.IsEnabled = !isWinget;
@@ -1022,6 +1041,8 @@ public partial class MainWindow : Window
         DetectSilentSwitchesButton.IsEnabled = !isWinget;
         DiscoveryModeButton.IsEnabled = discoveryEnabled;
         ApplyDiscoverySuggestionsButton.IsEnabled = !isWinget && !_isDiscoveryRunning && _lastHyperVDiscoveryResult is not null;
+        OpenDiscoveryJobFolderButton.IsEnabled = hasDiscoveryResult;
+        OpenDiscoveryLogsFolderButton.IsEnabled = hasDiscoveryResult || File.Exists(AppPaths.AdminLogPath);
         ImportDropZone.IsEnabled = !isWinget;
         ImportDropZone.Opacity = isWinget ? 0.55 : 1.0;
         VmNameTextBox.IsEnabled = discoveryEnabled;

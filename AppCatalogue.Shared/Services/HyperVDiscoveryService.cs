@@ -30,18 +30,40 @@ public sealed class HyperVDiscoveryService
 
         var errors = new List<string>();
         var staged = StageInputs(request, settings);
+        var jobLogger = new DiscoveryJobLogger(staged.JobId, staged.HostResultDirectory, _logger);
+        var guestArtifacts = new CollectedGuestArtifacts(
+            staged.HostGuestArtifactsDirectory,
+            staged.GuestLogPath,
+            staged.GuestStatusPath,
+            staged.RawResultPath);
         var cleanupNeeded = false;
+        var finalStage = "JobCreated";
+        var currentStage = "JobCreated";
 
         Report(progress, DiscoveryProgressStage.PreparingLab, $"Discovery start for '{request.AppName}'.");
-        _logger.Log($"Discovery start. App='{request.AppName}', Installer='{request.InstallerPath}', VM='{settings.VmName}', Checkpoint='{settings.CheckpointName}'.");
+        jobLogger.LogInfo(
+            "JobCreated",
+            $"Discovery start. App='{request.AppName}', Installer='{request.InstallerPath}', VM='{settings.VmName}', Checkpoint='{settings.CheckpointName}'.");
+        jobLogger.UpdateStatus(
+            state: "InProgress",
+            stage: "JobCreated",
+            message: "Discovery job created on host.",
+            success: null,
+            resultPath: staged.RawResultPath,
+            logPath: jobLogger.HostLogPath);
 
         try
         {
             await EnsureVmAndCheckpointExistAsync(settings, cancellationToken);
             cleanupNeeded = true;
 
+            currentStage = "CheckpointRestoreStart";
+            jobLogger.LogInfo(currentStage, $"Restoring checkpoint '{settings.CheckpointName}'.");
+            jobLogger.UpdateStatus("InProgress", currentStage, $"Restoring checkpoint '{settings.CheckpointName}'.");
             Report(progress, DiscoveryProgressStage.RestoringCheckpoint, $"Restoring checkpoint '{settings.CheckpointName}'.");
             await RestoreCheckpointAsync(settings, cancellationToken);
+            jobLogger.LogInfo("CheckpointRestoreComplete", $"Checkpoint '{settings.CheckpointName}' restored.");
+            jobLogger.UpdateStatus("InProgress", "CheckpointRestoreComplete", $"Checkpoint '{settings.CheckpointName}' restored.");
 
             Report(progress, DiscoveryProgressStage.StartingVm, $"Starting VM '{settings.VmName}'.");
             await StartVmAsync(settings, cancellationToken);
@@ -49,19 +71,83 @@ public sealed class HyperVDiscoveryService
             Report(progress, DiscoveryProgressStage.WaitingForGuest, "Waiting for guest heartbeat.");
             await WaitForGuestReadyAsync(settings, progress, cancellationToken);
 
+            currentStage = "InstallerCopyStart";
+            jobLogger.LogInfo(currentStage, "Copying discovery scripts and installer into guest.");
+            jobLogger.UpdateStatus("InProgress", currentStage, "Copying discovery scripts and installer into guest.");
             Report(progress, DiscoveryProgressStage.CopyingInstaller, "Copying discovery scripts and installer into guest.");
             await CopyInputFilesToGuestAsync(request, settings, staged, cancellationToken);
+            jobLogger.LogInfo("InstallerCopyComplete", "Discovery scripts and installer copied into guest.");
+            jobLogger.UpdateStatus("InProgress", "InstallerCopyComplete", "Discovery scripts and installer copied into guest.");
 
+            currentStage = "GuestBootstrapStart";
+            jobLogger.LogInfo(currentStage, "Submitting discovery job to guest watcher.");
+            jobLogger.UpdateStatus("InProgress", currentStage, "Submitting discovery job to guest watcher.");
             Report(progress, DiscoveryProgressStage.SubmittingDiscoveryJob, "Submitting file-based discovery job to guest watcher.");
             await SubmitDiscoveryJobAsync(settings, staged, cancellationToken);
+            jobLogger.LogInfo("GuestBootstrapComplete", "Discovery job files submitted to guest watcher.");
+            jobLogger.UpdateStatus("InProgress", "GuestBootstrapComplete", "Discovery job files submitted to guest watcher.");
 
+            currentStage = "WaitForGuestSignalStart";
+            jobLogger.LogInfo(currentStage, "Waiting for guest completion signal.");
+            jobLogger.UpdateStatus("InProgress", currentStage, "Waiting for guest completion signal.");
             Report(progress, DiscoveryProgressStage.WaitingForGuestResults, "Waiting for guest discovery completion.");
-            await WaitForGuestCompletionAsync(settings, staged.JobId, progress, cancellationToken);
+            await WaitForGuestCompletionAsync(
+                settings,
+                staged.JobId,
+                progress,
+                signal =>
+                {
+                    if (string.IsNullOrWhiteSpace(signal.Stage))
+                    {
+                        return;
+                    }
 
+                    currentStage = signal.Stage;
+                    if (signal.Stage.Equals("DiscoverySucceeded", StringComparison.OrdinalIgnoreCase) ||
+                        signal.Stage.Equals("DiscoveryFailed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        finalStage = signal.Stage;
+                    }
+
+                    var guestMessage = string.IsNullOrWhiteSpace(signal.Message)
+                        ? signal.Stage
+                        : $"{signal.Stage}: {signal.Message}";
+                    jobLogger.LogInfo("GuestSignalReceived", guestMessage);
+                    jobLogger.UpdateStatus(
+                        string.IsNullOrWhiteSpace(signal.State) ? "InProgress" : signal.State,
+                        "GuestSignalReceived",
+                        guestMessage,
+                        success: signal.Success,
+                        error: signal.Error,
+                        resultPath: signal.ResultPath,
+                        logPath: jobLogger.HostLogPath);
+                },
+                cancellationToken);
+
+            currentStage = "ResultCollectionStart";
+            jobLogger.LogInfo(currentStage, "Collecting guest artifacts from VM disk.");
+            jobLogger.UpdateStatus("InProgress", currentStage, "Collecting guest artifacts from VM disk.");
             Report(progress, DiscoveryProgressStage.CollectingResults, "Collecting discovery output from VM disk.");
             await CollectGuestOutputAsync(settings, staged, cancellationToken);
+            guestArtifacts = ResolveCollectedGuestArtifacts(staged);
+            await CopyArtifactsToLegacyDirectoryAsync(staged, guestArtifacts, cancellationToken);
+            jobLogger.LogInfo("ResultCollectionComplete", $"Guest artifacts collected to '{guestArtifacts.ArtifactsDirectory}'.");
+            jobLogger.UpdateStatus(
+                "InProgress",
+                "ResultCollectionComplete",
+                "Guest artifacts collected.",
+                resultPath: guestArtifacts.ResultPath,
+                logPath: jobLogger.HostLogPath);
 
-            var discoveryResult = await LoadDiscoveryResultAsync(staged.RawResultPath, cancellationToken);
+            currentStage = "ResultParseStart";
+            jobLogger.LogInfo(currentStage, "Parsing discovery result and guest status files.");
+            jobLogger.UpdateStatus(
+                "InProgress",
+                currentStage,
+                "Parsing discovery result and guest status files.",
+                resultPath: guestArtifacts.ResultPath);
+            var discoveryResult = await LoadDiscoveryResultAsync(guestArtifacts.ResultPath, cancellationToken);
+            var discoveryStatus = await LoadDiscoveryStatusAsync(guestArtifacts.StatusPath, cancellationToken);
             if (!discoveryResult.Success)
             {
                 foreach (var error in discoveryResult.Errors)
@@ -70,41 +156,150 @@ public sealed class HyperVDiscoveryService
                 }
             }
 
+            if (discoveryStatus is not null && !string.IsNullOrWhiteSpace(discoveryStatus.Error))
+            {
+                errors.Add(discoveryStatus.Error);
+            }
+
+            jobLogger.LogInfo("ResultParseComplete", "Discovery result parsing complete.");
+            jobLogger.UpdateStatus(
+                "InProgress",
+                "ResultParseComplete",
+                "Discovery result parsing complete.",
+                success: discoveryResult.Success,
+                error: string.Join(" | ", errors.Where(e => !string.IsNullOrWhiteSpace(e))),
+                resultPath: guestArtifacts.ResultPath,
+                logPath: jobLogger.HostLogPath);
+
             var summary = discoveryResult.Success
                 ? "Discovery completed successfully."
                 : "Discovery completed with warnings. Review errors/evidence.";
 
             Report(progress, DiscoveryProgressStage.Complete, summary);
-            _logger.Log($"Discovery completed. Success={discoveryResult.Success}, ResultPath='{staged.RawResultPath}'.");
+            finalStage = "DiscoveryCompleted";
+            jobLogger.LogInfo(finalStage, $"Discovery completed. Success={discoveryResult.Success}, ResultPath='{guestArtifacts.ResultPath}'.");
+            jobLogger.UpdateStatus(
+                discoveryResult.Success ? "Completed" : "CompletedWithWarnings",
+                finalStage,
+                summary,
+                success: discoveryResult.Success,
+                error: string.Join(" | ", errors.Where(e => !string.IsNullOrWhiteSpace(e))),
+                resultPath: guestArtifacts.ResultPath,
+                logPath: jobLogger.HostLogPath);
 
             return new HyperVDiscoveryRunResult
             {
                 Success = discoveryResult.Success,
                 Summary = summary,
                 HostResultDirectory = staged.HostResultDirectory,
-                RawResultPath = staged.RawResultPath,
+                HostJobDirectory = staged.HostResultDirectory,
+                HostLogPath = jobLogger.HostLogPath,
+                HostStatusPath = jobLogger.StatusPath,
+                GuestArtifactsDirectory = guestArtifacts.ArtifactsDirectory,
+                GuestLogPath = guestArtifacts.LogPath,
+                GuestStatusPath = guestArtifacts.StatusPath,
+                GuestResultPath = guestArtifacts.ResultPath,
+                RawResultPath = guestArtifacts.ResultPath,
+                CurrentStage = currentStage,
+                FinalStage = finalStage,
+                Status = discoveryStatus ?? jobLogger.CurrentStatus,
                 DiscoveryResult = discoveryResult,
                 Errors = errors
             };
         }
-        catch (Exception ex)
+        catch (TimeoutException ex)
         {
-            var message = $"Discovery failed: {ex.Message}";
+            finalStage = "Timeout";
+            currentStage = finalStage;
+            var message = $"Discovery timed out: {ex.Message}";
             errors.Add(message);
-            _logger.Log(message);
+            jobLogger.LogError(finalStage, message, ex);
+            jobLogger.UpdateStatus(
+                "Timeout",
+                finalStage,
+                message,
+                success: false,
+                error: ex.Message,
+                resultPath: guestArtifacts.ResultPath,
+                logPath: jobLogger.HostLogPath);
             Report(progress, DiscoveryProgressStage.Failed, message, isError: true);
+
+            guestArtifacts = await TryCollectGuestArtifactsOnFailureAsync(
+                settings,
+                staged,
+                jobLogger,
+                "timeout",
+                cancellationToken);
+
+            var discoveryStatus = await LoadDiscoveryStatusAsync(guestArtifacts.StatusPath, cancellationToken);
+            var discoveryResult = await LoadDiscoveryResultAsync(guestArtifacts.ResultPath, cancellationToken);
+            AppendDiscoveryErrors(errors, discoveryStatus, discoveryResult);
 
             return new HyperVDiscoveryRunResult
             {
                 Success = false,
                 Summary = message,
                 HostResultDirectory = staged.HostResultDirectory,
-                RawResultPath = staged.RawResultPath,
-                DiscoveryResult = new HyperVDiscoveryResult
-                {
-                    Success = false,
-                    Errors = errors
-                },
+                HostJobDirectory = staged.HostResultDirectory,
+                HostLogPath = jobLogger.HostLogPath,
+                HostStatusPath = jobLogger.StatusPath,
+                GuestArtifactsDirectory = guestArtifacts.ArtifactsDirectory,
+                GuestLogPath = guestArtifacts.LogPath,
+                GuestStatusPath = guestArtifacts.StatusPath,
+                GuestResultPath = guestArtifacts.ResultPath,
+                RawResultPath = guestArtifacts.ResultPath,
+                CurrentStage = currentStage,
+                FinalStage = finalStage,
+                Status = discoveryStatus ?? jobLogger.CurrentStatus,
+                DiscoveryResult = discoveryResult,
+                Errors = errors
+            };
+        }
+        catch (Exception ex)
+        {
+            finalStage = "DiscoveryFailed";
+            currentStage = finalStage;
+            var message = $"Discovery failed: {ex.Message}";
+            errors.Add(message);
+            jobLogger.LogError(finalStage, message, ex);
+            jobLogger.UpdateStatus(
+                "Failed",
+                finalStage,
+                message,
+                success: false,
+                error: ex.Message,
+                resultPath: guestArtifacts.ResultPath,
+                logPath: jobLogger.HostLogPath);
+            Report(progress, DiscoveryProgressStage.Failed, message, isError: true);
+
+            guestArtifacts = await TryCollectGuestArtifactsOnFailureAsync(
+                settings,
+                staged,
+                jobLogger,
+                "failure",
+                cancellationToken);
+
+            var discoveryStatus = await LoadDiscoveryStatusAsync(guestArtifacts.StatusPath, cancellationToken);
+            var discoveryResult = await LoadDiscoveryResultAsync(guestArtifacts.ResultPath, cancellationToken);
+            AppendDiscoveryErrors(errors, discoveryStatus, discoveryResult);
+
+            return new HyperVDiscoveryRunResult
+            {
+                Success = false,
+                Summary = message,
+                HostResultDirectory = staged.HostResultDirectory,
+                HostJobDirectory = staged.HostResultDirectory,
+                HostLogPath = jobLogger.HostLogPath,
+                HostStatusPath = jobLogger.StatusPath,
+                GuestArtifactsDirectory = guestArtifacts.ArtifactsDirectory,
+                GuestLogPath = guestArtifacts.LogPath,
+                GuestStatusPath = guestArtifacts.StatusPath,
+                GuestResultPath = guestArtifacts.ResultPath,
+                RawResultPath = guestArtifacts.ResultPath,
+                CurrentStage = currentStage,
+                FinalStage = finalStage,
+                Status = discoveryStatus ?? jobLogger.CurrentStatus,
+                DiscoveryResult = discoveryResult,
                 Errors = errors
             };
         }
@@ -149,16 +344,21 @@ public sealed class HyperVDiscoveryService
     {
         Directory.CreateDirectory(settings.HostStagingDirectory);
         Directory.CreateDirectory(settings.HostResultsDirectory);
+        Directory.CreateDirectory(AppPaths.EndpointDiscoveryJobsDirectory);
     }
 
     private static StagedDiscoveryArtifacts StageInputs(HyperVDiscoveryRequest request, DiscoveryModeSettings settings)
     {
         var jobId = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}";
         var hostStagingJobDirectory = Path.Combine(settings.HostStagingDirectory, jobId);
-        var hostResultDirectory = Path.Combine(settings.HostResultsDirectory, jobId);
+        var hostResultDirectory = Path.Combine(AppPaths.EndpointDiscoveryJobsDirectory, jobId);
+        var hostGuestArtifactsDirectory = Path.Combine(hostResultDirectory, "guest-artifacts");
+        var legacyResultDirectory = Path.Combine(settings.HostResultsDirectory, jobId);
 
         Directory.CreateDirectory(hostStagingJobDirectory);
         Directory.CreateDirectory(hostResultDirectory);
+        Directory.CreateDirectory(hostGuestArtifactsDirectory);
+        Directory.CreateDirectory(legacyResultDirectory);
 
         var extension = Path.GetExtension(request.InstallerPath);
         if (string.IsNullOrWhiteSpace(extension))
@@ -190,11 +390,16 @@ public sealed class HyperVDiscoveryService
 
         return new StagedDiscoveryArtifacts(
             jobId,
+            hostStagingJobDirectory,
             stagedInstallerPath,
             jobPath,
             triggerPath,
             hostResultDirectory,
-            Path.Combine(hostResultDirectory, "discovery-results.json"));
+            hostGuestArtifactsDirectory,
+            legacyResultDirectory,
+            Path.Combine(hostGuestArtifactsDirectory, "Jobs", jobId, "discovery-results.json"),
+            Path.Combine(hostGuestArtifactsDirectory, "Jobs", jobId, "discovery-status.json"),
+            Path.Combine(hostGuestArtifactsDirectory, "Jobs", jobId, "guest.log"));
     }
 
     private async Task EnsureVmAndCheckpointExistAsync(DiscoveryModeSettings settings, CancellationToken cancellationToken)
@@ -321,8 +526,12 @@ public sealed class HyperVDiscoveryService
         var runScript = Path.Combine(request.GuestScriptSourceDirectory, "Run-Discovery.ps1");
         var watcherScript = Path.Combine(request.GuestScriptSourceDirectory, "Discovery-Watcher.ps1");
         var bootstrapScript = Path.Combine(request.GuestScriptSourceDirectory, "Install-DiscoveryBootstrap.ps1");
+        var loggingScript = Path.Combine(request.GuestScriptSourceDirectory, "Discovery-Logging.ps1");
 
-        if (!File.Exists(runScript) || !File.Exists(watcherScript) || !File.Exists(bootstrapScript))
+        if (!File.Exists(runScript) ||
+            !File.Exists(watcherScript) ||
+            !File.Exists(bootstrapScript) ||
+            !File.Exists(loggingScript))
         {
             throw new InvalidOperationException(
                 $"Guest script package is missing. Expected scripts under '{request.GuestScriptSourceDirectory}'.");
@@ -334,6 +543,7 @@ public sealed class HyperVDiscoveryService
         await CopyFileToGuestAsync(settings, runScript, CombineWindowsPath(guestScriptsDirectory, "Run-Discovery.ps1"), cancellationToken);
         await CopyFileToGuestAsync(settings, watcherScript, CombineWindowsPath(guestScriptsDirectory, "Discovery-Watcher.ps1"), cancellationToken);
         await CopyFileToGuestAsync(settings, bootstrapScript, CombineWindowsPath(guestScriptsDirectory, "Install-DiscoveryBootstrap.ps1"), cancellationToken);
+        await CopyFileToGuestAsync(settings, loggingScript, CombineWindowsPath(guestScriptsDirectory, "Discovery-Logging.ps1"), cancellationToken);
 
         await CopyFileToGuestAsync(
             settings,
@@ -366,6 +576,7 @@ public sealed class HyperVDiscoveryService
         DiscoveryModeSettings settings,
         string jobId,
         IProgress<DiscoveryProgressUpdate>? progress,
+        Action<GuestDiscoverySignal>? onSignal,
         CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow.AddSeconds(settings.DiscoveryTimeoutSeconds);
@@ -395,7 +606,8 @@ public sealed class HyperVDiscoveryService
             {
                 firstSignalUtc ??= DateTime.UtcNow;
 
-                if (guestSignal.Stage.Equals("WatcherReady", StringComparison.OrdinalIgnoreCase))
+                if (guestSignal.Stage.Equals("WatcherReady", StringComparison.OrdinalIgnoreCase) ||
+                    guestSignal.Stage.Equals("WatcherStarted", StringComparison.OrdinalIgnoreCase))
                 {
                     firstWatcherReadyUtc ??= DateTime.UtcNow;
                 }
@@ -414,16 +626,24 @@ public sealed class HyperVDiscoveryService
                 if (!string.Equals(fingerprint, lastGuestSignalFingerprint, StringComparison.Ordinal))
                 {
                     lastGuestSignalFingerprint = fingerprint;
+                    onSignal?.Invoke(guestSignal);
                     Report(
                         progress,
                         DiscoveryProgressStage.WaitingForGuestResults,
                         $"Guest status: {guestSignal.Stage} - {guestSignal.Message}");
                 }
 
-                var stageIsComplete = guestSignal.Stage.Equals("Complete", StringComparison.OrdinalIgnoreCase) ||
-                                      guestSignal.Stage.Equals("Failed", StringComparison.OrdinalIgnoreCase);
+                var stageIsComplete =
+                    guestSignal.Stage.Equals("Complete", StringComparison.OrdinalIgnoreCase) ||
+                    guestSignal.Stage.Equals("Failed", StringComparison.OrdinalIgnoreCase) ||
+                    guestSignal.Stage.Equals("DiscoverySucceeded", StringComparison.OrdinalIgnoreCase) ||
+                    guestSignal.Stage.Equals("DiscoveryFailed", StringComparison.OrdinalIgnoreCase);
 
-                if (isMatchingJobSignal && guestSignal.ResultReady && stageIsComplete && !stopTriggeredBySignal)
+                var terminalSignalForCurrentRun =
+                    isMatchingJobSignal ||
+                    string.IsNullOrWhiteSpace(guestSignal.JobId);
+
+                if (terminalSignalForCurrentRun && guestSignal.ResultReady && stageIsComplete && !stopTriggeredBySignal)
                 {
                     stopTriggeredBySignal = true;
                     Report(
@@ -522,11 +742,25 @@ public sealed class HyperVDiscoveryService
             }
         }
 
+        $successRaw = $map['AppCatalogueDiscoverySuccess']
+        $successValue = $null
+        if ($successRaw -eq 'true') {
+            $successValue = $true
+        }
+        elseif ($successRaw -eq 'false') {
+            $successValue = $false
+        }
+
         $payload = [ordered]@{
             Stage = $map['AppCatalogueDiscoveryStage']
             Message = $map['AppCatalogueDiscoveryMessage']
+            State = $map['AppCatalogueDiscoveryState']
             ResultReady = (($map['AppCatalogueDiscoveryResultReady']) -eq 'true')
             JobId = $map['AppCatalogueDiscoveryJobId']
+            Success = $successValue
+            Error = $map['AppCatalogueDiscoveryError']
+            ResultPath = $map['AppCatalogueDiscoveryResultPath']
+            LogPath = $map['AppCatalogueDiscoveryLogPath']
             UpdatedUtc = $map['AppCatalogueDiscoveryUpdatedUtc']
         }
         $payload | ConvertTo-Json -Compress
@@ -603,7 +837,7 @@ public sealed class HyperVDiscoveryService
         }
         """
         .Replace("__VM_NAME__", EscapeForSingleQuotedPowerShell(settings.VmName), StringComparison.Ordinal)
-        .Replace("__DESTINATION__", EscapeForSingleQuotedPowerShell(staged.HostResultDirectory), StringComparison.Ordinal)
+        .Replace("__DESTINATION__", EscapeForSingleQuotedPowerShell(staged.HostGuestArtifactsDirectory), StringComparison.Ordinal)
         .Replace("__GUEST_OUTPUT__", EscapeForSingleQuotedPowerShell(guestOutputRelativePath), StringComparison.Ordinal);
 
         await RunPowerShellStepAsync(
@@ -611,6 +845,194 @@ public sealed class HyperVDiscoveryService
             Math.Max(settings.CommandTimeoutSeconds, 180),
             "Collect guest output",
             cancellationToken);
+    }
+
+    private async Task<CollectedGuestArtifacts> TryCollectGuestArtifactsOnFailureAsync(
+        DiscoveryModeSettings settings,
+        StagedDiscoveryArtifacts staged,
+        DiscoveryJobLogger jobLogger,
+        string failureMode,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            jobLogger.LogInfo("ResultCollectionStart", $"Attempting guest artifact collection after {failureMode}.");
+            jobLogger.UpdateStatus("InProgress", "ResultCollectionStart", $"Attempting guest artifact collection after {failureMode}.");
+
+            try
+            {
+                await StopVmIfRunningAsync(settings, cancellationToken);
+            }
+            catch (Exception stopEx)
+            {
+                jobLogger.LogWarning("ResultCollectionStart", $"Best-effort Stop-VM before artifact collection failed: {stopEx.Message}");
+            }
+
+            await CollectGuestOutputAsync(settings, staged, cancellationToken);
+            var collected = ResolveCollectedGuestArtifacts(staged);
+            await CopyArtifactsToLegacyDirectoryAsync(staged, collected, cancellationToken);
+
+            jobLogger.LogInfo("ResultCollectionComplete", $"Guest artifacts collected to '{collected.ArtifactsDirectory}'.");
+            jobLogger.UpdateStatus(
+                "InProgress",
+                "ResultCollectionComplete",
+                "Guest artifacts collected.",
+                resultPath: collected.ResultPath,
+                logPath: jobLogger.HostLogPath);
+
+            return collected;
+        }
+        catch (Exception ex)
+        {
+            jobLogger.LogWarning("ResultCollectionComplete", $"Guest artifact collection was not successful: {ex.Message}");
+            return ResolveCollectedGuestArtifacts(staged);
+        }
+    }
+
+    private static CollectedGuestArtifacts ResolveCollectedGuestArtifacts(StagedDiscoveryArtifacts staged)
+    {
+        var artifactsDirectory = staged.HostGuestArtifactsDirectory;
+        if (!Directory.Exists(artifactsDirectory))
+        {
+            return new CollectedGuestArtifacts(
+                artifactsDirectory,
+                staged.GuestLogPath,
+                staged.GuestStatusPath,
+                staged.RawResultPath);
+        }
+
+        var logPath = ResolveArtifactPath(
+            artifactsDirectory,
+            staged.GuestLogPath,
+            "guest.log",
+            "Run-Discovery.log");
+        var statusPath = ResolveArtifactPath(
+            artifactsDirectory,
+            staged.GuestStatusPath,
+            "discovery-status.json",
+            "status.json");
+        var resultPath = ResolveArtifactPath(
+            artifactsDirectory,
+            staged.RawResultPath,
+            "discovery-results.json");
+
+        return new CollectedGuestArtifacts(artifactsDirectory, logPath, statusPath, resultPath);
+    }
+
+    private static string ResolveArtifactPath(
+        string artifactDirectory,
+        string preferredPath,
+        params string[] fileNames)
+    {
+        if (File.Exists(preferredPath))
+        {
+            return preferredPath;
+        }
+
+        foreach (var fileName in fileNames.Where(name => !string.IsNullOrWhiteSpace(name)))
+        {
+            var rootCandidate = Path.Combine(artifactDirectory, fileName);
+            if (File.Exists(rootCandidate))
+            {
+                return rootCandidate;
+            }
+
+            var match = Directory.EnumerateFiles(artifactDirectory, fileName, SearchOption.AllDirectories)
+                .FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(match))
+            {
+                return match;
+            }
+        }
+
+        return preferredPath;
+    }
+
+    private static Task CopyArtifactsToLegacyDirectoryAsync(
+        StagedDiscoveryArtifacts staged,
+        CollectedGuestArtifacts collected,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Directory.CreateDirectory(staged.LegacyResultDirectory);
+
+        if (!Directory.Exists(collected.ArtifactsDirectory))
+        {
+            return Task.CompletedTask;
+        }
+
+        foreach (var sourcePath in Directory.EnumerateFiles(collected.ArtifactsDirectory, "*", SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relativePath = Path.GetRelativePath(collected.ArtifactsDirectory, sourcePath);
+            var destinationPath = Path.Combine(staged.LegacyResultDirectory, relativePath);
+            var destinationDirectory = Path.GetDirectoryName(destinationPath);
+            if (!string.IsNullOrWhiteSpace(destinationDirectory))
+            {
+                Directory.CreateDirectory(destinationDirectory);
+            }
+
+            File.Copy(sourcePath, destinationPath, overwrite: true);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task<DiscoveryStatusContract?> LoadDiscoveryStatusAsync(string statusPath, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(statusPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(statusPath, Encoding.UTF8, cancellationToken);
+            var status = JsonSerializer.Deserialize<DiscoveryStatusContract>(json, _jsonOptions);
+            return status;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void AppendDiscoveryErrors(
+        List<string> errors,
+        DiscoveryStatusContract? status,
+        HyperVDiscoveryResult? result)
+    {
+        void AddIfPresent(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            if (!errors.Contains(value, StringComparer.OrdinalIgnoreCase))
+            {
+                errors.Add(value);
+            }
+        }
+
+        if (status is not null)
+        {
+            AddIfPresent(status.Error);
+            if (status.Success == false &&
+                !string.IsNullOrWhiteSpace(status.Message) &&
+                !status.Message.Equals(status.Error, StringComparison.OrdinalIgnoreCase))
+            {
+                AddIfPresent(status.Message);
+            }
+        }
+
+        if (result?.Errors is not null)
+        {
+            foreach (var error in result.Errors)
+            {
+                AddIfPresent(error);
+            }
+        }
     }
 
     private async Task<HyperVDiscoveryResult> LoadDiscoveryResultAsync(string resultPath, CancellationToken cancellationToken)
@@ -640,11 +1062,16 @@ public sealed class HyperVDiscoveryService
         }
 
         parsed.SilentSwitchSuggestions ??= [];
+        parsed.SilentRecommendation ??= new SilentSwitchRecommendation();
+        parsed.SilentSwitchAttemptHistory ??= [];
         parsed.Evidence ??= new DiscoveryEvidence();
         parsed.Errors ??= [];
         parsed.Evidence.NewUninstallEntries ??= [];
         parsed.Evidence.NewFiles ??= [];
         parsed.Evidence.NewRegistryKeys ??= [];
+        parsed.Evidence.NewServices ??= [];
+        parsed.Evidence.NewShortcuts ??= [];
+        parsed.Evidence.NewProcesses ??= [];
         parsed.Evidence.ProbeAttempts ??= [];
 
         return parsed;
@@ -906,18 +1333,34 @@ public sealed class HyperVDiscoveryService
     {
         public string Stage { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
+        public string State { get; set; } = string.Empty;
         public bool ResultReady { get; set; }
         public string JobId { get; set; } = string.Empty;
+        public bool? Success { get; set; }
+        public string Error { get; set; } = string.Empty;
+        public string ResultPath { get; set; } = string.Empty;
+        public string LogPath { get; set; } = string.Empty;
         public string UpdatedUtc { get; set; } = string.Empty;
     }
 
     private sealed record StagedDiscoveryArtifacts(
         string JobId,
+        string HostStagingJobDirectory,
         string StagedInstallerPath,
         string JobPath,
         string TriggerPath,
         string HostResultDirectory,
-        string RawResultPath);
+        string HostGuestArtifactsDirectory,
+        string LegacyResultDirectory,
+        string RawResultPath,
+        string GuestStatusPath,
+        string GuestLogPath);
+
+    private sealed record CollectedGuestArtifacts(
+        string ArtifactsDirectory,
+        string LogPath,
+        string StatusPath,
+        string ResultPath);
 
     private sealed record PowerShellExecutionResult(int ExitCode, string StandardOutput, string StandardError);
 }

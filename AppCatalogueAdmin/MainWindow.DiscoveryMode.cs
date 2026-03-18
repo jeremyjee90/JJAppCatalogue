@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Windows;
+using System.Windows.Media;
 using AppCatalogue.Shared.Models;
 using AppCatalogue.Shared.Services;
 
@@ -52,11 +54,9 @@ public partial class MainWindow
         {
             _isDiscoveryRunning = true;
             _lastHyperVDiscoveryResult = null;
-            DiscoveryProgressTextBox.Text = string.Empty;
-            DiscoveryEvidenceTextBox.Text = string.Empty;
-            DiscoverySilentSuggestionsListBox.ItemsSource = null;
-            DiscoveryPrimaryRecommendationTextBlock.Text = string.Empty;
-            DiscoverySecondaryRecommendationTextBlock.Text = string.Empty;
+            ResetDiscoveryDiagnosticsUi();
+            SetDiscoveryStateBadge("In Progress", "#1B73C7");
+            SetConfidenceBadge("-", "#7A8797");
             DetectionTestResultTextBox.Text = string.Empty;
             UpdateSourceTypeUi();
 
@@ -101,6 +101,8 @@ public partial class MainWindow
                 IsError = true
             });
             DiscoveryResultSummaryTextBlock.Text = $"Discovery failed: {guidance}";
+            SetDiscoveryStateBadge("Failed", "#B6433B");
+            SetConfidenceBadge("Manual Review", "#B46A00");
             SetStatus("One-click discovery failed.");
         }
         finally
@@ -108,6 +110,23 @@ public partial class MainWindow
             _isDiscoveryRunning = false;
             UpdateSourceTypeUi();
         }
+    }
+
+    private void ResetDiscoveryDiagnosticsUi()
+    {
+        DiscoveryProgressTextBox.Text = string.Empty;
+        DiscoveryEvidenceTextBox.Text = string.Empty;
+        DiscoverySilentSuggestionsListBox.ItemsSource = null;
+        DiscoveryAttemptHistoryListBox.ItemsSource = null;
+        DiscoveryPrimaryRecommendationTextBlock.Text = string.Empty;
+        DiscoverySecondaryRecommendationTextBlock.Text = string.Empty;
+        DiscoveryResultSummaryTextBlock.Text = string.Empty;
+        DiscoveryRecommendedCommandTextBox.Text = string.Empty;
+        DiscoveryHostJobPathTextBox.Text = string.Empty;
+        DiscoveryHostLogPathTextBox.Text = string.Empty;
+        DiscoveryGuestLogPathTextBox.Text = string.Empty;
+        DiscoveryStageTextBlock.Text = "Current stage: Not started";
+        DiscoveryFinalStageTextBlock.Text = "Final stage: Not started";
     }
 
     private void ApplyDiscoverySuggestionsButton_Click(object sender, RoutedEventArgs e)
@@ -132,17 +151,18 @@ public partial class MainWindow
             SecondaryDetectionValueTextBox.Text = result.SecondaryDetection.Value;
         }
 
-        if (result.SilentSwitchSuggestions.Count > 0)
+        var recommendedArguments = result.SilentRecommendation?.RecommendedArguments ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(recommendedArguments) && result.SilentSwitchSuggestions.Count > 0)
         {
-            var preferredSilent = result.SilentSwitchSuggestions
+            recommendedArguments = result.SilentSwitchSuggestions
                 .OrderByDescending(s => ConfidenceScore(s.Confidence))
                 .Select(s => s.Arguments)
                 .FirstOrDefault();
+        }
 
-            if (!string.IsNullOrWhiteSpace(preferredSilent))
-            {
-                SilentArgumentsTextBox.Text = preferredSilent;
-            }
+        if (!string.IsNullOrWhiteSpace(recommendedArguments))
+        {
+            SilentArgumentsTextBox.Text = recommendedArguments;
         }
 
         MarkDirty(true);
@@ -157,29 +177,60 @@ public partial class MainWindow
         var prefix = update.IsError ? "ERROR" : update.Stage.ToString();
         DiscoveryProgressTextBox.AppendText($"[{localTime}] {prefix}: {update.Message}{Environment.NewLine}");
         DiscoveryProgressTextBox.ScrollToEnd();
+        DiscoveryStageTextBlock.Text = $"Current stage: {update.Stage}";
     }
 
     private void ApplyDiscoveryRunResultToUi(HyperVDiscoveryRunResult runResult)
     {
         var result = runResult.DiscoveryResult ?? new HyperVDiscoveryResult();
+        var status = runResult.Status;
+
+        var statusMessage = status is null
+            ? runResult.Summary
+            : $"{status.State} - {status.Stage}: {status.Message}";
+        if (status is not null && !string.IsNullOrWhiteSpace(status.Error))
+        {
+            statusMessage += $"{Environment.NewLine}Error: {status.Error}";
+        }
+
         DiscoveryResultSummaryTextBlock.Text =
             $"{runResult.Summary}{Environment.NewLine}" +
+            $"Status: {statusMessage}{Environment.NewLine}" +
             $"Result file: {runResult.RawResultPath}";
+        DiscoveryStageTextBlock.Text = $"Current stage: {runResult.CurrentStage}";
+        DiscoveryFinalStageTextBlock.Text = $"Final stage: {runResult.FinalStage}";
+        DiscoveryHostJobPathTextBox.Text = runResult.HostJobDirectory;
+        DiscoveryHostLogPathTextBox.Text = runResult.HostLogPath;
+        DiscoveryGuestLogPathTextBox.Text = runResult.GuestLogPath;
+        DiscoveryRecommendedCommandTextBox.Text = BuildSilentRecommendationText(result);
 
         DiscoverySilentSuggestionsListBox.ItemsSource = result.SilentSwitchSuggestions;
+        DiscoveryAttemptHistoryListBox.ItemsSource = result.SilentSwitchAttemptHistory
+            .Select(BuildAttemptHistoryDisplay)
+            .ToList();
         DiscoveryPrimaryRecommendationTextBlock.Text = result.PrimaryDetection?.DisplayText ?? "No primary recommendation";
         DiscoverySecondaryRecommendationTextBlock.Text = result.SecondaryDetection?.DisplayText ?? "No secondary recommendation";
         DiscoveryEvidenceTextBox.Text = BuildDiscoveryEvidenceText(result);
+
+        SetDiscoveryStateBadge(runResult.Success ? "Completed" : "Needs Review", runResult.Success ? "#1F8656" : "#B46A00");
+        var confidenceLabel = string.IsNullOrWhiteSpace(result.SilentRecommendation?.ConfidenceLabel)
+            ? "-"
+            : result.SilentRecommendation.ConfidenceLabel;
+        SetConfidenceBadge(confidenceLabel, ConfidenceColor(confidenceLabel));
 
         if (!string.IsNullOrWhiteSpace(result.RawHelpOutput))
         {
             ProbeOutputTextBox.Text = result.RawHelpOutput;
         }
 
+        SuggestionComboBox.ItemsSource = result.SilentSwitchSuggestions.Select(s => s.Arguments).Distinct().ToList();
         if (result.SilentSwitchSuggestions.Count > 0)
         {
-            SuggestionComboBox.ItemsSource = result.SilentSwitchSuggestions.Select(s => s.Arguments).Distinct().ToList();
             SuggestionComboBox.SelectedIndex = 0;
+        }
+        else
+        {
+            SuggestionComboBox.SelectedItem = null;
         }
 
         var detectionSuggestions = BuildDetectionSuggestionsFromDiscovery(result);
@@ -241,6 +292,121 @@ public partial class MainWindow
         };
     }
 
+    private static string BuildSilentRecommendationText(HyperVDiscoveryResult result)
+    {
+        var recommendation = result.SilentRecommendation ?? new SilentSwitchRecommendation();
+        if (string.IsNullOrWhiteSpace(recommendation.RecommendedCommand) &&
+            string.IsNullOrWhiteSpace(recommendation.RecommendedArguments))
+        {
+            return "No trusted silent command recommendation was validated. Manual review is required.";
+        }
+
+        var commandText = $"{recommendation.RecommendedCommand} {recommendation.RecommendedArguments}".Trim();
+        return $"{commandText}{Environment.NewLine}Confidence: {recommendation.ConfidenceLabel} ({recommendation.ConfidenceScore:0.00}){Environment.NewLine}{recommendation.Reason}";
+    }
+
+    private static string BuildAttemptHistoryDisplay(SilentSwitchAttemptRecord attempt)
+    {
+        var exitCodeText = attempt.ExitCode.HasValue ? attempt.ExitCode.Value.ToString() : "n/a";
+        return $"#{attempt.AttemptNumber} [{attempt.CandidateSource}] {attempt.Arguments} | Pass={attempt.Pass} Exit={exitCodeText} TimedOut={attempt.TimedOut} Artifacts={attempt.InstallationArtifactsDetected}";
+    }
+
+    private void SetDiscoveryStateBadge(string text, string backgroundHex)
+    {
+        DiscoveryStateBadgeTextBlock.Text = text;
+        DiscoveryStateBadgeBorder.Background = BrushFromHex(backgroundHex, "#E4ECF5");
+        DiscoveryStateBadgeTextBlock.Foreground = text.Equals("Ready", StringComparison.OrdinalIgnoreCase) || text.Equals("-", StringComparison.OrdinalIgnoreCase)
+            ? BrushFromHex("#23405D", "#23405D")
+            : BrushFromHex("#FFFFFF", "#FFFFFF");
+    }
+
+    private void SetConfidenceBadge(string text, string backgroundHex)
+    {
+        DiscoveryConfidenceBadgeTextBlock.Text = text;
+        DiscoveryConfidenceBadgeBorder.Background = BrushFromHex(backgroundHex, "#E4ECF5");
+        DiscoveryConfidenceBadgeTextBlock.Foreground = text.Equals("-", StringComparison.OrdinalIgnoreCase)
+            ? BrushFromHex("#23405D", "#23405D")
+            : BrushFromHex("#FFFFFF", "#FFFFFF");
+    }
+
+    private static string ConfidenceColor(string confidenceLabel)
+    {
+        return confidenceLabel.ToLowerInvariant() switch
+        {
+            "high" => "#1F8656",
+            "medium" => "#B46A00",
+            _ => "#7A8797"
+        };
+    }
+
+    private static Brush BrushFromHex(string candidateHex, string fallbackHex)
+    {
+        try
+        {
+            return (Brush)new BrushConverter().ConvertFromString(candidateHex)!;
+        }
+        catch
+        {
+            return (Brush)new BrushConverter().ConvertFromString(fallbackHex)!;
+        }
+    }
+
+    private void OpenDiscoveryJobFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        var path = string.IsNullOrWhiteSpace(DiscoveryHostJobPathTextBox.Text)
+            ? _lastHyperVDiscoveryResult?.HostJobDirectory ?? string.Empty
+            : DiscoveryHostJobPathTextBox.Text.Trim();
+        OpenFolderPath(path);
+    }
+
+    private void OpenDiscoveryLogsFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        var candidatePaths = new[]
+        {
+            _lastHyperVDiscoveryResult?.HostLogPath ?? string.Empty,
+            _lastHyperVDiscoveryResult?.GuestLogPath ?? string.Empty,
+            AppPaths.AdminLogPath
+        };
+
+        var firstExistingParent = candidatePaths
+            .Select(path => string.IsNullOrWhiteSpace(path) ? string.Empty : Path.GetDirectoryName(path) ?? string.Empty)
+            .FirstOrDefault(directory => !string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory));
+
+        OpenFolderPath(firstExistingParent ?? string.Empty);
+    }
+
+    private void OpenFolderPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            ShowValidation("No log or job folder is available yet.");
+            return;
+        }
+
+        var expanded = Environment.ExpandEnvironmentVariables(path.Trim());
+        var targetFolder = Directory.Exists(expanded) ? expanded : Path.GetDirectoryName(expanded);
+        if (string.IsNullOrWhiteSpace(targetFolder) || !Directory.Exists(targetFolder))
+        {
+            ShowValidation($"Folder not found: {expanded}");
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{targetFolder}\"",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Log($"Failed to open folder '{targetFolder}': {ex.Message}");
+            ShowValidation($"Could not open folder: {targetFolder}");
+        }
+    }
+
     private string ResolveGuestScriptSourceDirectory()
     {
         var candidatePaths = new[]
@@ -255,6 +421,7 @@ public partial class MainWindow
             if (Directory.Exists(candidate) &&
                 File.Exists(Path.Combine(candidate, "Run-Discovery.ps1")) &&
                 File.Exists(Path.Combine(candidate, "Discovery-Watcher.ps1")) &&
+                File.Exists(Path.Combine(candidate, "Discovery-Logging.ps1")) &&
                 File.Exists(Path.Combine(candidate, "Install-DiscoveryBootstrap.ps1")))
             {
                 return candidate;
@@ -375,6 +542,48 @@ public partial class MainWindow
         else
         {
             foreach (var item in result.Evidence.NewRegistryKeys)
+            {
+                builder.AppendLine($"  - {item}");
+            }
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("New services:");
+        if (result.Evidence.NewServices.Count == 0)
+        {
+            builder.AppendLine("  (none)");
+        }
+        else
+        {
+            foreach (var item in result.Evidence.NewServices)
+            {
+                builder.AppendLine($"  - {item}");
+            }
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("New shortcuts:");
+        if (result.Evidence.NewShortcuts.Count == 0)
+        {
+            builder.AppendLine("  (none)");
+        }
+        else
+        {
+            foreach (var item in result.Evidence.NewShortcuts)
+            {
+                builder.AppendLine($"  - {item}");
+            }
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("New processes:");
+        if (result.Evidence.NewProcesses.Count == 0)
+        {
+            builder.AppendLine("  (none)");
+        }
+        else
+        {
+            foreach (var item in result.Evidence.NewProcesses)
             {
                 builder.AppendLine($"  - {item}");
             }

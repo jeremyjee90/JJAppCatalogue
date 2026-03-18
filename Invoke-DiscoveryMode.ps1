@@ -59,7 +59,7 @@ if ($vm.State -ne 'Running') {
 Enable-VMIntegrationService -VMName $VmName -Name 'Guest Service Interface' -ErrorAction SilentlyContinue | Out-Null
 
 Write-Host 'Copying guest scripts and job files...'
-foreach ($scriptName in @('Run-Discovery.ps1', 'Discovery-Watcher.ps1', 'Install-DiscoveryBootstrap.ps1')) {
+foreach ($scriptName in @('Run-Discovery.ps1', 'Discovery-Watcher.ps1', 'Discovery-Logging.ps1', 'Install-DiscoveryBootstrap.ps1')) {
     $sourceScript = Join-Path $HostGuestScriptSource $scriptName
     if (-not (Test-Path $sourceScript)) {
         throw "Required guest script missing: $sourceScript"

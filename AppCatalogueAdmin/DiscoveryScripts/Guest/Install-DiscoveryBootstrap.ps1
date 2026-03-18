@@ -16,7 +16,7 @@ foreach ($path in @($inputDir, $outputDir, $scriptsDir, $logsDir)) {
     New-Item -Path $path -ItemType Directory -Force | Out-Null
 }
 
-foreach ($scriptName in @('Run-Discovery.ps1', 'Discovery-Watcher.ps1')) {
+foreach ($scriptName in @('Run-Discovery.ps1', 'Discovery-Watcher.ps1', 'Discovery-Logging.ps1')) {
     $sourcePath = Join-Path $sourceDir $scriptName
     $destinationPath = Join-Path $scriptsDir $scriptName
     if (-not (Test-Path $sourcePath)) {

@@ -39,6 +39,8 @@ Use this quick checklist once per packaging VM.
 4. Click `One-Click Discovery`.
 5. Review:
    - Silent suggestions
+   - Recommended silent command + confidence
+   - Attempt history
    - Primary detection recommendation
    - Secondary detection recommendation
    - Evidence
@@ -47,8 +49,15 @@ Use this quick checklist once per packaging VM.
 
 ## If discovery fails
 
-1. Check host log: `C:\Installers\Logs\AppCatalogueAdmin.log`
-2. Check guest logs:
+1. Open the discovery job folder from AppCatalogueAdmin (`Open Job Folder`).
+2. Check host per-job artifacts:
+   - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\host.log`
+   - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\status.json`
+3. Check collected guest per-job artifacts:
+   - `...\guest-artifacts\Jobs\<JobId>\guest.log`
+   - `...\guest-artifacts\Jobs\<JobId>\discovery-status.json`
+   - `...\guest-artifacts\Jobs\<JobId>\discovery-results.json`
+4. Check watcher service log inside VM:
    - `C:\Discovery\Logs\Discovery-Watcher.log`
-   - `C:\Discovery\Logs\Run-Discovery.log`
-3. Re-run guest bootstrap script and recreate `CleanState`.
+5. Re-run guest bootstrap script and recreate `CleanState` if watcher or completion signaling is missing.
+6. Keep `C:\Installers\Logs\AppCatalogueAdmin.log` for overall app-level diagnostics.

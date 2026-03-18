@@ -14,6 +14,7 @@ if (-not (Test-Path $HostGuestScriptSource)) {
 $requiredScripts = @(
     'Run-Discovery.ps1',
     'Discovery-Watcher.ps1',
+    'Discovery-Logging.ps1',
     'Install-DiscoveryBootstrap.ps1'
 )
 

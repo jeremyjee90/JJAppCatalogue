@@ -120,6 +120,10 @@ Behavior:
   - required `PrimaryDetection`
   - optional `SecondaryDetection` fallback
 - Includes `Explain Detection Rule`, `Test Detection`, and `One-Click Discovery` actions
+- Per discovery run, creates a host job folder with detailed logs/artifacts:
+  - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\host.log`
+  - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\status.json`
+  - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\guest-artifacts\...`
 - Manual override is always available
 
 ## Silent Switch Helper Notes
@@ -144,6 +148,82 @@ Behavior:
 - `Test Detection` runs current primary/secondary detection rules on the current machine and reports PASS/FAIL details
 - `One-Click Discovery` uses Hyper-V checkpointed packaging flow (no guest password prompts)
 - Discovery suggestions are always best-effort and must be reviewed before applying/saving
+
+## Discovery Logging and Artifacts
+
+Each discovery run is traceable end-to-end with per-job artifacts:
+
+- Host job folder:
+  - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\host.log`
+  - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\status.json`
+- Collected guest artifacts (copied back by host, even on failure when possible):
+  - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\guest-artifacts\Jobs\<JobId>\guest.log`
+  - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\guest-artifacts\Jobs\<JobId>\discovery-status.json`
+  - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\guest-artifacts\Jobs\<JobId>\discovery-results.json`
+- Legacy copy for compatibility:
+  - `C:\Installers\Discovery\Results\<JobId>\...`
+
+Host status stages include:
+
+- `JobCreated`
+- `CheckpointRestoreStart` / `CheckpointRestoreComplete`
+- `InstallerCopyStart` / `InstallerCopyComplete`
+- `GuestBootstrapStart` / `GuestBootstrapComplete`
+- `WaitForGuestSignalStart`
+- `GuestSignalReceived`
+- `ResultCollectionStart` / `ResultCollectionComplete`
+- `ResultParseStart` / `ResultParseComplete`
+- `DiscoveryCompleted` / `DiscoveryFailed` / `Timeout`
+
+Guest stages include:
+
+- `WatcherStarted`
+- `JobDetected`
+- `JobLoaded`
+- `InstallerFound`
+- `DiscoveryStarted`
+- `SilentSwitchAnalysisStarted`
+- `SilentSwitchAttempt`
+- `SilentSwitchAnalysisComplete`
+- `DetectionRuleAnalysisStarted`
+- `DetectionRuleAnalysisComplete`
+- `ResultWriteStart` / `ResultWriteComplete`
+- `CompletionSignalStart` / `CompletionSignalComplete`
+- `DiscoverySucceeded` / `DiscoveryFailed`
+
+Use the new AppCatalogueAdmin buttons:
+
+- `Open Job Folder`
+- `Open Logs Folder`
+
+to jump directly to troubleshooting artifacts.
+
+## Silent Switch Retry Order and Confidence
+
+Discovery now uses a ranked attempt pipeline:
+
+1. MSI: `msiexec /i "<installer>" /qn /norestart` first.
+2. EXE with clear help output: help-derived switches first.
+3. Fingerprint-based fallbacks next (Inno Setup, NSIS, InstallShield, WiX/Burn).
+4. Generic fallback switches last.
+
+Each attempt records:
+
+- attempt number
+- selected arguments and why
+- installer fingerprint family
+- process start/timed out/completed
+- exit code
+- artifact evidence deltas (uninstall entries, files, services, shortcuts, processes)
+- pass/fail assessment
+
+Recommendations include:
+
+- `SilentRecommendation` (command/arguments)
+- confidence label (`High`, `Medium`, `Low`)
+- confidence score
+- manual-review-needed indicator
+- full ordered attempt history
 
 ## Hyper-V Discovery Mode Setup
 
@@ -192,7 +272,8 @@ When tech clicks `One-Click Discovery` in `AppCatalogueAdmin`:
 6. Wait for guest watcher to process job and power off VM
 7. Monitor guest progress via Hyper-V KVP status signals (PowerShell-readable host communication)
 8. Collect `discovery-results.json` from guest disk into:
-   - `C:\Installers\Discovery\Results\<JobId>\`
+   - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\guest-artifacts\`
+   - plus compatibility copy to `C:\Installers\Discovery\Results\<JobId>\`
 9. Show suggested silent switches, primary detection, secondary detection, evidence
 10. Attempt VM cleanup/revert to `CleanState`
 
@@ -220,12 +301,22 @@ When tech clicks `One-Click Discovery` in `AppCatalogueAdmin`:
   - in guest run `C:\Discovery\Scripts\Install-DiscoveryBootstrap.ps1`
   - confirm scheduled task `AppCatalogueDiscoveryWatcher` is running
   - create a new `CleanState` checkpoint after that
+- `Guest processing in progress` repeats:
+  - open host job folder and inspect `host.log` + `status.json`
+  - inspect guest artifacts (if present) under `guest-artifacts\Jobs\<JobId>\`
+  - check `guest.log` for last stage reached
 - `Guest script package not found`:
   - verify `DiscoveryScripts\Guest` is present near `AppCatalogueAdmin.exe`
   - republish with `publish_all.bat`
 - Missing result JSON:
-  - check `C:\Discovery\Logs\` inside guest
-  - check host log `C:\Installers\Logs\AppCatalogueAdmin.log`
+  - check per-job host log and status:
+    - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\host.log`
+    - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\status.json`
+  - check guest logs:
+    - `C:\Discovery\Logs\Discovery-Watcher.log`
+    - `C:\Discovery\Output\Jobs\<JobId>\guest.log`
+  - check admin app log:
+    - `C:\Installers\Logs\AppCatalogueAdmin.log`
 
 ### 7) Helper scripts
 

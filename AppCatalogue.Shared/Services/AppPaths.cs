@@ -11,6 +11,8 @@ public static class AppPaths
     public const string EndpointLogsDirectory = @"C:\ProgramData\AppCatalogue\Logs";
     public const string EndpointIconsDirectory = @"C:\ProgramData\AppCatalogue\Icons";
     public const string EndpointRequestsDirectory = @"C:\ProgramData\AppCatalogue\Requests";
+    public const string EndpointDiscoveryRootDirectory = @"C:\ProgramData\AppCatalogue\Discovery";
+    public const string EndpointDiscoveryJobsDirectory = @"C:\ProgramData\AppCatalogue\Discovery\Jobs";
 
     public const string FileServerRootDirectory = @"C:\Installers";
     public const string FileServerAdminDirectory = @"C:\Installers\Admin";
@@ -36,6 +38,8 @@ public static class AppPaths
         Directory.CreateDirectory(EndpointLogsDirectory);
         Directory.CreateDirectory(EndpointIconsDirectory);
         Directory.CreateDirectory(EndpointRequestsDirectory);
+        Directory.CreateDirectory(EndpointDiscoveryRootDirectory);
+        Directory.CreateDirectory(EndpointDiscoveryJobsDirectory);
     }
 
     public static void EnsureFileServerStructure(FileLogger? logger = null)
