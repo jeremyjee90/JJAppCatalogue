@@ -56,7 +56,7 @@ public sealed class HyperVDiscoveryService
             await SubmitDiscoveryJobAsync(settings, staged, cancellationToken);
 
             Report(progress, DiscoveryProgressStage.WaitingForGuestResults, "Waiting for guest discovery completion.");
-            await WaitForVmToPowerOffAsync(settings, progress, cancellationToken);
+            await WaitForGuestCompletionAsync(settings, staged.JobId, progress, cancellationToken);
 
             Report(progress, DiscoveryProgressStage.CollectingResults, "Collecting discovery output from VM disk.");
             await CollectGuestOutputAsync(settings, staged, cancellationToken);
@@ -360,12 +360,17 @@ public sealed class HyperVDiscoveryService
             cancellationToken);
     }
 
-    private async Task WaitForVmToPowerOffAsync(
+    private async Task WaitForGuestCompletionAsync(
         DiscoveryModeSettings settings,
+        string jobId,
         IProgress<DiscoveryProgressUpdate>? progress,
         CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow.AddSeconds(settings.DiscoveryTimeoutSeconds);
+        var stopTriggeredBySignal = false;
+        var lastGuestSignalFingerprint = string.Empty;
+        var lastGuestStatusMessage = string.Empty;
+
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -377,12 +382,133 @@ public sealed class HyperVDiscoveryService
                 return;
             }
 
-            Report(progress, DiscoveryProgressStage.WaitingForGuestResults, $"Guest processing in progress (VM state: {vmState}).");
+            var guestSignal = await GetGuestSignalAsync(settings, cancellationToken);
+            if (guestSignal is not null &&
+                !string.IsNullOrWhiteSpace(guestSignal.JobId) &&
+                guestSignal.JobId.Equals(jobId, StringComparison.OrdinalIgnoreCase))
+            {
+                lastGuestStatusMessage = $"{guestSignal.Stage}: {guestSignal.Message}";
+                var fingerprint = $"{guestSignal.Stage}|{guestSignal.Message}|{guestSignal.ResultReady}";
+                if (!string.Equals(fingerprint, lastGuestSignalFingerprint, StringComparison.Ordinal))
+                {
+                    lastGuestSignalFingerprint = fingerprint;
+                    Report(
+                        progress,
+                        DiscoveryProgressStage.WaitingForGuestResults,
+                        $"Guest status: {guestSignal.Stage} - {guestSignal.Message}");
+                }
+
+                var stageIsComplete = guestSignal.Stage.Equals("Complete", StringComparison.OrdinalIgnoreCase) ||
+                                      guestSignal.Stage.Equals("Failed", StringComparison.OrdinalIgnoreCase);
+
+                if (guestSignal.ResultReady && stageIsComplete && !stopTriggeredBySignal)
+                {
+                    stopTriggeredBySignal = true;
+                    Report(
+                        progress,
+                        DiscoveryProgressStage.WaitingForGuestResults,
+                        "Guest signaled result-ready. Stopping VM for result collection.");
+
+                    try
+                    {
+                        await StopVmIfRunningAsync(settings, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Log($"Guest completion stop signal failed: {ex.Message}");
+                    }
+                }
+            }
+            else
+            {
+                Report(progress, DiscoveryProgressStage.WaitingForGuestResults, $"Guest processing in progress (VM state: {vmState}).");
+            }
+
             await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
         }
 
-        throw new TimeoutException(
-            $"Timed out waiting for discovery results. Ensure guest bootstrap is installed and watcher task is running in VM '{settings.VmName}'.");
+        var timeoutMessage =
+            $"Timed out waiting for discovery results from VM '{settings.VmName}'. " +
+            "Ensure guest bootstrap is installed and watcher task is running.";
+
+        if (!string.IsNullOrWhiteSpace(lastGuestStatusMessage))
+        {
+            timeoutMessage += $" Last guest status: {lastGuestStatusMessage}";
+        }
+
+        throw new TimeoutException(timeoutMessage);
+    }
+
+    private async Task<GuestDiscoverySignal?> GetGuestSignalAsync(
+        DiscoveryModeSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var script = """
+        $ErrorActionPreference = 'Stop'
+        Import-Module Hyper-V -ErrorAction Stop
+
+        $vm = Get-VM -Name '__VM_NAME__' -ErrorAction Stop
+        $vmId = $vm.VMId.Guid
+        $computer = Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_ComputerSystem -Filter "Name='$vmId'"
+        if ($null -eq $computer) {
+            return
+        }
+
+        $kvpComponent = Get-CimAssociatedInstance -InputObject $computer -ResultClassName Msvm_KvpExchangeComponent | Select-Object -First 1
+        if ($null -eq $kvpComponent) {
+            return
+        }
+
+        $map = @{}
+        foreach ($item in $kvpComponent.GuestExchangeItems) {
+            try {
+                $xml = [xml]$item
+                $nameNode = $xml.INSTANCE.PROPERTY | Where-Object { $_.Name -eq 'Name' } | Select-Object -First 1
+                $valueNode = $xml.INSTANCE.PROPERTY | Where-Object { $_.Name -eq 'Data' } | Select-Object -First 1
+                if ($null -ne $nameNode -and $null -ne $valueNode) {
+                    $map[[string]$nameNode.VALUE] = [string]$valueNode.VALUE
+                }
+            }
+            catch {
+                # best effort parse only
+            }
+        }
+
+        $payload = [ordered]@{
+            Stage = $map['AppCatalogueDiscoveryStage']
+            Message = $map['AppCatalogueDiscoveryMessage']
+            ResultReady = (($map['AppCatalogueDiscoveryResultReady']) -eq 'true')
+            JobId = $map['AppCatalogueDiscoveryJobId']
+            UpdatedUtc = $map['AppCatalogueDiscoveryUpdatedUtc']
+        }
+        $payload | ConvertTo-Json -Compress
+        """
+        .Replace("__VM_NAME__", EscapeForSingleQuotedPowerShell(settings.VmName), StringComparison.Ordinal);
+
+        var result = await RunPowerShellAsync(script, settings.CommandTimeoutSeconds, cancellationToken);
+        if (result.ExitCode != 0)
+        {
+            return null;
+        }
+
+        var jsonLine = result.StandardOutput
+            .Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault(line => line.TrimStart().StartsWith("{", StringComparison.Ordinal));
+
+        if (string.IsNullOrWhiteSpace(jsonLine))
+        {
+            return null;
+        }
+
+        try
+        {
+            var signal = JsonSerializer.Deserialize<GuestDiscoverySignal>(jsonLine, _jsonOptions);
+            return signal;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task CollectGuestOutputAsync(
@@ -726,6 +852,15 @@ public sealed class HyperVDiscoveryService
             IsError = isError,
             TimestampUtc = DateTime.UtcNow
         });
+    }
+
+    private sealed class GuestDiscoverySignal
+    {
+        public string Stage { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public bool ResultReady { get; set; }
+        public string JobId { get; set; } = string.Empty;
+        public string UpdatedUtc { get; set; } = string.Empty;
     }
 
     private sealed record StagedDiscoveryArtifacts(

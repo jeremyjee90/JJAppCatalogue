@@ -11,6 +11,8 @@ $logsDir = Join-Path $discoveryRoot 'Logs'
 $runLogPath = Join-Path $logsDir 'Run-Discovery.log'
 $resultPath = Join-Path $outputDir 'discovery-results.json'
 $statusPath = Join-Path $outputDir 'status.json'
+$hostSignalRegistryPath = 'HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters'
+$global:DiscoveryJobId = ''
 
 New-Item -Path $inputDir -ItemType Directory -Force | Out-Null
 New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
@@ -20,6 +22,26 @@ function Write-Log {
     param([string]$Message)
     $line = "{0:u} {1}" -f (Get-Date), $Message
     Add-Content -Path $runLogPath -Value $line -Encoding UTF8
+}
+
+function Publish-HostSignal {
+    param(
+        [string]$Stage,
+        [string]$Message,
+        [bool]$ResultReady = $false
+    )
+
+    try {
+        New-Item -Path $hostSignalRegistryPath -Force -ErrorAction SilentlyContinue | Out-Null
+        Set-ItemProperty -Path $hostSignalRegistryPath -Name 'AppCatalogueDiscoveryStage' -Value $Stage -Type String -Force
+        Set-ItemProperty -Path $hostSignalRegistryPath -Name 'AppCatalogueDiscoveryMessage' -Value $Message -Type String -Force
+        Set-ItemProperty -Path $hostSignalRegistryPath -Name 'AppCatalogueDiscoveryResultReady' -Value ($(if ($ResultReady) { 'true' } else { 'false' })) -Type String -Force
+        Set-ItemProperty -Path $hostSignalRegistryPath -Name 'AppCatalogueDiscoveryJobId' -Value $global:DiscoveryJobId -Type String -Force
+        Set-ItemProperty -Path $hostSignalRegistryPath -Name 'AppCatalogueDiscoveryUpdatedUtc' -Value ((Get-Date).ToUniversalTime().ToString('o')) -Type String -Force
+    }
+    catch {
+        Write-Log "Host signal update failed: $($_.Exception.Message)"
+    }
 }
 
 function Write-Status {
@@ -40,6 +62,7 @@ function Write-Status {
 
     $status | ConvertTo-Json -Depth 6 | Set-Content -Path $statusPath -Encoding UTF8
     Write-Log "STATUS [$Stage] $Message"
+    Publish-HostSignal -Stage $Stage -Message $Message -ResultReady $false
 }
 
 function Get-UninstallSnapshot {
@@ -327,6 +350,8 @@ try {
 
     Write-Status -Stage 'Preparing' -Message 'Loading discovery job.' -Percent 5
     $job = Get-Content -Path $JobPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $global:DiscoveryJobId = [string]$job.JobId
+    Publish-HostSignal -Stage 'Preparing' -Message 'Discovery job accepted by guest runner.' -ResultReady $false
 
     $installerPath = Join-Path $inputDir $job.InstallerFileName
     if (-not (Test-Path $installerPath)) {
@@ -461,8 +486,10 @@ try {
 
     Write-Status -Stage 'WritingResults' -Message 'Writing discovery result JSON.' -Percent 90
     $result | ConvertTo-Json -Depth 8 | Set-Content -Path $resultPath -Encoding UTF8
+    Publish-HostSignal -Stage 'WritingResults' -Message 'Result file written in guest output.' -ResultReady $true
 
     Write-Status -Stage 'Complete' -Message 'Discovery run completed.' -Percent 100
+    Publish-HostSignal -Stage 'Complete' -Message 'Discovery run completed successfully.' -ResultReady $true
     Write-Log "Discovery complete. Success=$($result.Success)"
 
     if ($job.ShutdownVmOnComplete -eq $true) {
@@ -494,6 +521,7 @@ catch {
 
     $fallbackResult | ConvertTo-Json -Depth 8 | Set-Content -Path $resultPath -Encoding UTF8
     Write-Status -Stage 'Failed' -Message $message -Percent 100 -IsError $true
+    Publish-HostSignal -Stage 'Failed' -Message $message -ResultReady $true
 
     if (Test-Path $JobPath) {
         try { Remove-Item -Path $JobPath -Force -ErrorAction SilentlyContinue } catch {}

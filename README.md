@@ -190,10 +190,11 @@ When tech clicks `One-Click Discovery` in `AppCatalogueAdmin`:
 4. Wait for guest heartbeat
 5. Copy installer + discovery job + scripts into guest (`C:\Discovery\...`)
 6. Wait for guest watcher to process job and power off VM
-7. Collect `discovery-results.json` from guest disk into:
+7. Monitor guest progress via Hyper-V KVP status signals (PowerShell-readable host communication)
+8. Collect `discovery-results.json` from guest disk into:
    - `C:\Installers\Discovery\Results\<JobId>\`
-8. Show suggested silent switches, primary detection, secondary detection, evidence
-9. Attempt VM cleanup/revert to `CleanState`
+9. Show suggested silent switches, primary detection, secondary detection, evidence
+10. Attempt VM cleanup/revert to `CleanState`
 
 ### 5) What still must be done manually
 
