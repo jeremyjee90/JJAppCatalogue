@@ -19,6 +19,11 @@ public static class AppPaths
     public const string FileServerConfigFilePath = @"C:\Installers\Config\apps.json";
     public const string FileServerScriptsDirectory = @"C:\Installers\Scripts";
     public const string FileServerLogsDirectory = @"C:\Installers\Logs";
+    public const string DiscoveryRootDirectory = @"C:\Installers\Discovery";
+    public const string DiscoveryHostStagingDirectory = @"C:\Installers\Discovery\HostStaging";
+    public const string DiscoveryResultsDirectory = @"C:\Installers\Discovery\Results";
+    public const string DiscoveryScriptsDirectory = @"C:\Installers\Discovery\Scripts";
+    public const string DiscoverySettingsFilePath = @"C:\Installers\Config\discovery-settings.json";
 
     public static string EndUserLogPath => Path.Combine(EndpointLogsDirectory, "AppCatalogue.log");
     public static string AdminLogPath => Path.Combine(FileServerLogsDirectory, "AppCatalogueAdmin.log");
@@ -41,6 +46,10 @@ public static class AppPaths
         EnsureDirectory(FileServerConfigDirectory, logger);
         EnsureDirectory(FileServerScriptsDirectory, logger);
         EnsureDirectory(FileServerLogsDirectory, logger);
+        EnsureDirectory(DiscoveryRootDirectory, logger);
+        EnsureDirectory(DiscoveryHostStagingDirectory, logger);
+        EnsureDirectory(DiscoveryResultsDirectory, logger);
+        EnsureDirectory(DiscoveryScriptsDirectory, logger);
     }
 
     public static void CleanupEndpointCache(FileLogger? logger = null)

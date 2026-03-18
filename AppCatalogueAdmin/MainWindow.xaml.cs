@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -19,12 +18,17 @@ public partial class MainWindow : Window
     private readonly SilentSwitchProbeService _silentProbeService;
     private readonly DetectionSuggestionService _detectionSuggestionService;
     private readonly AppDetectionService _detectionService;
+    private readonly DiscoverySettingsService _discoverySettingsService;
+    private readonly HyperVDiscoveryService _hyperVDiscoveryService;
     private readonly ObservableCollection<AppEntry> _apps = [];
     private readonly ICollectionView _appsView;
     private bool _isDirty;
     private bool _isLoadingState;
+    private bool _isDiscoveryRunning;
     private string _lastImportedRepositoryFolder = string.Empty;
     private DetectionSuggestionResult? _lastDetectionSuggestionResult;
+    private HyperVDiscoveryRunResult? _lastHyperVDiscoveryResult;
+    private DiscoveryModeSettings _discoverySettings = DiscoverySettingsService.CreateDefaults();
 
     public MainWindow()
     {
@@ -36,9 +40,17 @@ public partial class MainWindow : Window
         _silentProbeService = new SilentSwitchProbeService(_logger);
         _detectionSuggestionService = new DetectionSuggestionService(_logger);
         _detectionService = new AppDetectionService();
+        _discoverySettingsService = new DiscoverySettingsService(_logger);
+        _hyperVDiscoveryService = new HyperVDiscoveryService(_logger);
 
         AppPaths.EnsureFileServerStructure(_logger);
         ConfigPathTextBlock.Text = $"Config Path: {AppPaths.FileServerConfigFilePath}";
+
+        _discoverySettings = _discoverySettingsService.LoadOrCreate(AppPaths.DiscoverySettingsFilePath);
+        VmNameTextBox.Text = _discoverySettings.VmName;
+        CheckpointNameTextBox.Text = _discoverySettings.CheckpointName;
+        DiscoveryResultSummaryTextBlock.Text =
+            $"Hyper-V Discovery defaults: VM '{_discoverySettings.VmName}', Checkpoint '{_discoverySettings.CheckpointName}'.";
 
         InstallerSourceTypeComboBox.ItemsSource = Enum.GetValues<InstallerSourceType>();
         DetectionTypeComboBox.ItemsSource = Enum.GetValues<DetectionType>();
@@ -530,83 +542,7 @@ public partial class MainWindow : Window
 
     private async void DiscoveryModeButton_Click(object sender, RoutedEventArgs e)
     {
-        var app = BuildSuggestionContextEntry();
-        if (app.InstallerSourceType != InstallerSourceType.FileServer)
-        {
-            ShowValidation("Discovery mode requires a FileServer installer entry.");
-            return;
-        }
-
-        var installerPath = Environment.ExpandEnvironmentVariables(app.InstallerPath);
-        if (string.IsNullOrWhiteSpace(installerPath) || !File.Exists(installerPath))
-        {
-            ShowValidation("Installer path is missing or not found for discovery mode.");
-            return;
-        }
-
-        var confirm = MessageBox.Show(
-            "Discovery mode will run the installer on this machine. Continue?",
-            "Discovery Mode",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
-
-        if (confirm != MessageBoxResult.Yes)
-        {
-            return;
-        }
-
-        try
-        {
-            SetStatus("Discovery mode: capturing pre-install snapshot...");
-            _logger.Log($"{app.Name}: discovery mode started.");
-
-            var beforeUninstall = _detectionService.CaptureUninstallEntries();
-            var beforePaths = CaptureFilePathSnapshot(app.Name);
-
-            var exitCode = await RunInstallerForDiscoveryAsync(installerPath, app.SilentArguments);
-            _logger.Log($"{app.Name}: discovery installer exited with code {exitCode}.");
-
-            SetStatus("Discovery mode: capturing post-install snapshot...");
-            var afterUninstall = _detectionService.CaptureUninstallEntries();
-            var afterPaths = CaptureFilePathSnapshot(app.Name);
-
-            var discoverySuggestions = BuildDiscoverySuggestions(app.Name, beforeUninstall, afterUninstall, beforePaths, afterPaths);
-            if (discoverySuggestions.Count == 0)
-            {
-                var fallback = _detectionSuggestionService.Suggest(app, installerPath, ProbeOutputTextBox.Text);
-                discoverySuggestions = fallback.Suggestions;
-            }
-
-            DetectionSuggestionsListBox.ItemsSource = discoverySuggestions;
-            _lastDetectionSuggestionResult = new DetectionSuggestionResult
-            {
-                Summary = discoverySuggestions.Count > 0
-                    ? $"Discovery mode generated {discoverySuggestions.Count} suggestion(s)."
-                    : "No reliable detection rule could be suggested automatically. Please configure detection manually.",
-                Suggestions = discoverySuggestions,
-                RecommendedPrimaryDetection = discoverySuggestions.FirstOrDefault(),
-                RecommendedSecondaryDetection = discoverySuggestions.Skip(1).FirstOrDefault()
-            };
-
-            DetectionSuggestionSummaryTextBlock.Text = _lastDetectionSuggestionResult.Summary;
-            if (discoverySuggestions.Count > 0)
-            {
-                DetectionSuggestionsListBox.SelectedIndex = 0;
-            }
-
-            DetectionTestResultTextBox.Text =
-                $"Discovery mode install exit code: {exitCode}{Environment.NewLine}" +
-                "Note: discovery results are best-effort only. Review suggestions before applying.";
-
-            SetStatus("Discovery mode complete. Review suggested detection rules.");
-            _logger.Log($"{app.Name}: discovery mode completed with {discoverySuggestions.Count} suggestions.");
-        }
-        catch (Exception ex)
-        {
-            DetectionTestResultTextBox.Text = $"Discovery mode failed: {ex.Message}";
-            SetStatus("Discovery mode failed.");
-            _logger.Log($"{app.Name}: discovery mode failed - {ex.Message}");
-        }
+        await RunHyperVDiscoveryAsync();
     }
 
     private void DetectionSuggestionsListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1015,7 +951,14 @@ public partial class MainWindow : Window
         DetectionSuggestionSummaryTextBlock.Text = string.Empty;
         DetectionExplanationTextBox.Text = string.Empty;
         DetectionTestResultTextBox.Text = string.Empty;
+        DiscoveryProgressTextBox.Text = string.Empty;
+        DiscoveryResultSummaryTextBlock.Text = string.Empty;
+        DiscoverySilentSuggestionsListBox.ItemsSource = null;
+        DiscoveryPrimaryRecommendationTextBlock.Text = string.Empty;
+        DiscoverySecondaryRecommendationTextBlock.Text = string.Empty;
+        DiscoveryEvidenceTextBox.Text = string.Empty;
         _lastDetectionSuggestionResult = null;
+        _lastHyperVDiscoveryResult = null;
 
         _lastImportedRepositoryFolder = ResolveRepositoryFolderForCurrentApp();
         _isLoadingState = false;
@@ -1050,7 +993,14 @@ public partial class MainWindow : Window
         DetectionSuggestionSummaryTextBlock.Text = string.Empty;
         DetectionExplanationTextBox.Text = string.Empty;
         DetectionTestResultTextBox.Text = string.Empty;
+        DiscoveryProgressTextBox.Text = string.Empty;
+        DiscoveryResultSummaryTextBlock.Text = string.Empty;
+        DiscoverySilentSuggestionsListBox.ItemsSource = null;
+        DiscoveryPrimaryRecommendationTextBlock.Text = string.Empty;
+        DiscoverySecondaryRecommendationTextBlock.Text = string.Empty;
+        DiscoveryEvidenceTextBox.Text = string.Empty;
         _lastDetectionSuggestionResult = null;
+        _lastHyperVDiscoveryResult = null;
         _lastImportedRepositoryFolder = string.Empty;
 
         _isLoadingState = false;
@@ -1063,15 +1013,19 @@ public partial class MainWindow : Window
     {
         var isWinget = InstallerSourceTypeComboBox.SelectedItem is InstallerSourceType source &&
                        source == InstallerSourceType.Winget;
+        var discoveryEnabled = !isWinget && !_isDiscoveryRunning;
 
         InstallerPathTextBox.IsEnabled = !isWinget;
         SilentArgumentsTextBox.IsEnabled = !isWinget;
         BrowseInstallerPathButton.IsEnabled = !isWinget;
         ImportInstallerButton.IsEnabled = !isWinget;
         DetectSilentSwitchesButton.IsEnabled = !isWinget;
-        DiscoveryModeButton.IsEnabled = !isWinget;
+        DiscoveryModeButton.IsEnabled = discoveryEnabled;
+        ApplyDiscoverySuggestionsButton.IsEnabled = !isWinget && !_isDiscoveryRunning && _lastHyperVDiscoveryResult is not null;
         ImportDropZone.IsEnabled = !isWinget;
         ImportDropZone.Opacity = isWinget ? 0.55 : 1.0;
+        VmNameTextBox.IsEnabled = discoveryEnabled;
+        CheckpointNameTextBox.IsEnabled = discoveryEnabled;
 
         WingetIdTextBox.IsEnabled = isWinget;
         WingetArgumentsTextBox.IsEnabled = isWinget;
@@ -1186,197 +1140,6 @@ public partial class MainWindow : Window
         }
 
         return string.Join(Environment.NewLine, lines);
-    }
-
-    private async Task<int> RunInstallerForDiscoveryAsync(string installerPath, string silentArguments)
-    {
-        var extension = Path.GetExtension(installerPath).ToLowerInvariant();
-        ProcessStartInfo startInfo;
-        if (extension == ".msi")
-        {
-            var msiArgs = string.IsNullOrWhiteSpace(silentArguments) ? "/qn /norestart" : silentArguments.Trim();
-            startInfo = new ProcessStartInfo
-            {
-                FileName = "msiexec.exe",
-                Arguments = $"/i \"{installerPath}\" {msiArgs}",
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-        }
-        else
-        {
-            startInfo = new ProcessStartInfo
-            {
-                FileName = installerPath,
-                Arguments = string.IsNullOrWhiteSpace(silentArguments) ? string.Empty : silentArguments.Trim(),
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-        }
-
-        using var process = new Process { StartInfo = startInfo };
-        if (!process.Start())
-        {
-            throw new InvalidOperationException("Failed to start installer for discovery mode.");
-        }
-
-        await process.WaitForExitAsync();
-        return process.ExitCode;
-    }
-
-    private HashSet<string> CaptureFilePathSnapshot(string appName)
-    {
-        var roots = new[]
-        {
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
-        }
-        .Where(path => !string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .ToList();
-
-        var tokens = appName
-            .Split([' ', '-', '_', '.'], StringSplitOptions.RemoveEmptyEntries)
-            .Where(token => token.Length >= 3)
-            .Select(token => token.ToLowerInvariant())
-            .Distinct()
-            .ToList();
-
-        if (tokens.Count == 0 && !string.IsNullOrWhiteSpace(appName))
-        {
-            tokens.Add(appName.Trim().ToLowerInvariant());
-        }
-
-        var snapshot = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var root in roots)
-        {
-            CaptureCandidatesRecursive(root, depth: 0, maxDepth: 3, tokens, snapshot);
-        }
-
-        return snapshot;
-    }
-
-    private static void CaptureCandidatesRecursive(
-        string directoryPath,
-        int depth,
-        int maxDepth,
-        List<string> tokens,
-        HashSet<string> snapshot)
-    {
-        if (depth > maxDepth)
-        {
-            return;
-        }
-
-        IEnumerable<string> subDirectories;
-        try
-        {
-            subDirectories = Directory.EnumerateDirectories(directoryPath);
-        }
-        catch
-        {
-            return;
-        }
-
-        foreach (var subDirectory in subDirectories)
-        {
-            var normalized = subDirectory.ToLowerInvariant();
-            if (tokens.Any(token => normalized.Contains(token, StringComparison.OrdinalIgnoreCase)))
-            {
-                snapshot.Add(subDirectory);
-
-                try
-                {
-                    foreach (var exePath in Directory.EnumerateFiles(subDirectory, "*.exe", SearchOption.TopDirectoryOnly))
-                    {
-                        snapshot.Add(exePath);
-                    }
-                }
-                catch
-                {
-                    // Ignore access issues; this is best-effort discovery only.
-                }
-            }
-
-            CaptureCandidatesRecursive(subDirectory, depth + 1, maxDepth, tokens, snapshot);
-        }
-    }
-
-    private List<DetectionRuleSuggestion> BuildDiscoverySuggestions(
-        string appName,
-        List<UninstallRegistryEntry> beforeUninstallEntries,
-        List<UninstallRegistryEntry> afterUninstallEntries,
-        HashSet<string> beforePaths,
-        HashSet<string> afterPaths)
-    {
-        var suggestions = new List<DetectionRuleSuggestion>();
-
-        var newUninstallEntries = afterUninstallEntries
-            .Where(after => beforeUninstallEntries.All(before =>
-                !string.Equals(before.RegistryPath, after.RegistryPath, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
-
-        foreach (var entry in newUninstallEntries)
-        {
-            suggestions.Add(new DetectionRuleSuggestion
-            {
-                DetectionType = DetectionType.RegistryDisplayName,
-                DetectionValue = entry.DisplayName,
-                Confidence = "High",
-                Reason = "New uninstall DisplayName detected after test install."
-            });
-
-            suggestions.Add(new DetectionRuleSuggestion
-            {
-                DetectionType = DetectionType.RegistryKeyExists,
-                DetectionValue = entry.RegistryPath,
-                Confidence = "Medium",
-                Reason = "New uninstall registry key detected after test install."
-            });
-        }
-        var newPaths = afterPaths
-            .Where(path => !beforePaths.Contains(path))
-            .Take(8)
-            .ToList();
-
-        foreach (var path in newPaths)
-        {
-            if (!path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            suggestions.Add(new DetectionRuleSuggestion
-            {
-                DetectionType = DetectionType.FileExists,
-                DetectionValue = path,
-                Confidence = "Medium",
-                Reason = "New executable path detected during discovery scan."
-            });
-        }
-
-        return suggestions
-            .GroupBy(
-                suggestion => $"{suggestion.DetectionType}|{suggestion.DetectionValue}",
-                StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .OrderBy(suggestion => suggestion.DetectionType == DetectionType.RegistryDisplayName ? 0 :
-                                   suggestion.DetectionType == DetectionType.FileExists ? 1 : 2)
-            .ThenByDescending(suggestion => SuggestionConfidenceScore(suggestion.Confidence))
-            .ThenBy(suggestion => suggestion.DetectionValue, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
-    private static int SuggestionConfidenceScore(string confidence)
-    {
-        return confidence.ToLowerInvariant() switch
-        {
-            "high" => 3,
-            "medium" => 2,
-            _ => 1
-        };
     }
 
     private void HandleDragFeedback(DragEventArgs e)
