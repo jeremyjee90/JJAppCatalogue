@@ -215,6 +215,11 @@ When tech clicks `One-Click Discovery` in `AppCatalogueAdmin`:
   - guest bootstrap task likely missing/not running
   - run `Install-DiscoveryBootstrap.ps1` again in guest
   - recreate `CleanState` checkpoint
+- `No guest discovery status signal was received`:
+  - watcher bootstrap is not active in the checkpoint
+  - in guest run `C:\Discovery\Scripts\Install-DiscoveryBootstrap.ps1`
+  - confirm scheduled task `AppCatalogueDiscoveryWatcher` is running
+  - create a new `CleanState` checkpoint after that
 - `Guest script package not found`:
   - verify `DiscoveryScripts\Guest` is present near `AppCatalogueAdmin.exe`
   - republish with `publish_all.bat`

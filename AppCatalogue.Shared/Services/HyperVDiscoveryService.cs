@@ -275,6 +275,8 @@ public sealed class HyperVDiscoveryService
             Start-VM -Name '__VM_NAME__' -ErrorAction Stop | Out-Null
         }
         Enable-VMIntegrationService -VMName '__VM_NAME__' -Name 'Guest Service Interface' -ErrorAction SilentlyContinue | Out-Null
+        Enable-VMIntegrationService -VMName '__VM_NAME__' -Name 'Key-Value Pair Exchange' -ErrorAction SilentlyContinue | Out-Null
+        Enable-VMIntegrationService -VMName '__VM_NAME__' -Name 'Heartbeat' -ErrorAction SilentlyContinue | Out-Null
         """
         .Replace("__VM_NAME__", EscapeForSingleQuotedPowerShell(settings.VmName), StringComparison.Ordinal);
 
@@ -367,9 +369,15 @@ public sealed class HyperVDiscoveryService
         CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow.AddSeconds(settings.DiscoveryTimeoutSeconds);
+        var waitStartedUtc = DateTime.UtcNow;
+        var noSignalTimeout = TimeSpan.FromSeconds(180);
+        var watcherNoPickupTimeout = TimeSpan.FromSeconds(180);
         var stopTriggeredBySignal = false;
         var lastGuestSignalFingerprint = string.Empty;
         var lastGuestStatusMessage = string.Empty;
+        var firstSignalUtc = (DateTime?)null;
+        var firstWatcherReadyUtc = (DateTime?)null;
+        var firstJobMatchedUtc = (DateTime?)null;
 
         while (DateTime.UtcNow < deadline)
         {
@@ -383,10 +391,24 @@ public sealed class HyperVDiscoveryService
             }
 
             var guestSignal = await GetGuestSignalAsync(settings, cancellationToken);
-            if (guestSignal is not null &&
-                !string.IsNullOrWhiteSpace(guestSignal.JobId) &&
-                guestSignal.JobId.Equals(jobId, StringComparison.OrdinalIgnoreCase))
+            if (guestSignal is not null && !string.IsNullOrWhiteSpace(guestSignal.Stage))
             {
+                firstSignalUtc ??= DateTime.UtcNow;
+
+                if (guestSignal.Stage.Equals("WatcherReady", StringComparison.OrdinalIgnoreCase))
+                {
+                    firstWatcherReadyUtc ??= DateTime.UtcNow;
+                }
+
+                var isMatchingJobSignal =
+                    !string.IsNullOrWhiteSpace(guestSignal.JobId) &&
+                    guestSignal.JobId.Equals(jobId, StringComparison.OrdinalIgnoreCase);
+
+                if (isMatchingJobSignal)
+                {
+                    firstJobMatchedUtc ??= DateTime.UtcNow;
+                }
+
                 lastGuestStatusMessage = $"{guestSignal.Stage}: {guestSignal.Message}";
                 var fingerprint = $"{guestSignal.Stage}|{guestSignal.Message}|{guestSignal.ResultReady}";
                 if (!string.Equals(fingerprint, lastGuestSignalFingerprint, StringComparison.Ordinal))
@@ -401,7 +423,7 @@ public sealed class HyperVDiscoveryService
                 var stageIsComplete = guestSignal.Stage.Equals("Complete", StringComparison.OrdinalIgnoreCase) ||
                                       guestSignal.Stage.Equals("Failed", StringComparison.OrdinalIgnoreCase);
 
-                if (guestSignal.ResultReady && stageIsComplete && !stopTriggeredBySignal)
+                if (isMatchingJobSignal && guestSignal.ResultReady && stageIsComplete && !stopTriggeredBySignal)
                 {
                     stopTriggeredBySignal = true;
                     Report(
@@ -418,10 +440,28 @@ public sealed class HyperVDiscoveryService
                         _logger.Log($"Guest completion stop signal failed: {ex.Message}");
                     }
                 }
+
+                if (!isMatchingJobSignal &&
+                    firstWatcherReadyUtc.HasValue &&
+                    !firstJobMatchedUtc.HasValue &&
+                    DateTime.UtcNow - firstWatcherReadyUtc.Value > watcherNoPickupTimeout)
+                {
+                    throw new TimeoutException(
+                        $"Guest watcher is running but did not pick up job '{jobId}' within {watcherNoPickupTimeout.TotalSeconds} seconds. " +
+                        "Verify C:\\Discovery\\Input\\job.json is being processed and recreate CleanState after running Install-DiscoveryBootstrap.ps1.");
+                }
             }
             else
             {
                 Report(progress, DiscoveryProgressStage.WaitingForGuestResults, $"Guest processing in progress (VM state: {vmState}).");
+
+                if (DateTime.UtcNow - waitStartedUtc > noSignalTimeout)
+                {
+                    throw new TimeoutException(
+                        $"No guest discovery status signal was received within {noSignalTimeout.TotalSeconds} seconds. " +
+                        "This usually means the VM checkpoint does not have the discovery watcher bootstrap active. " +
+                        "In VM: run C:\\Discovery\\Scripts\\Install-DiscoveryBootstrap.ps1, confirm task AppCatalogueDiscoveryWatcher is running, then recreate checkpoint CleanState.");
+                }
             }
 
             await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
@@ -459,8 +499,16 @@ public sealed class HyperVDiscoveryService
             return
         }
 
+        $allItems = @()
+        if ($kvpComponent.GuestExchangeItems) {
+            $allItems += $kvpComponent.GuestExchangeItems
+        }
+        if ($kvpComponent.GuestIntrinsicExchangeItems) {
+            $allItems += $kvpComponent.GuestIntrinsicExchangeItems
+        }
+
         $map = @{}
-        foreach ($item in $kvpComponent.GuestExchangeItems) {
+        foreach ($item in $allItems) {
             try {
                 $xml = [xml]$item
                 $nameNode = $xml.INSTANCE.PROPERTY | Where-Object { $_.Name -eq 'Name' } | Select-Object -First 1
