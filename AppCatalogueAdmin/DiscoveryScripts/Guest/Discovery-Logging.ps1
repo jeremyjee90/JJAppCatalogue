@@ -90,7 +90,7 @@ function Write-DiscoveryStatus {
 
     $status = [ordered]@{
         jobId = $Context.JobId
-        success = if ($null -eq $Success) { $null } else { [bool]$Success.Value }
+        success = if ($null -eq $Success) { $null } else { [bool]$Success }
         state = if ([string]::IsNullOrWhiteSpace($State)) { 'InProgress' } else { $State }
         stage = if ([string]::IsNullOrWhiteSpace($Stage)) { 'Unknown' } else { $Stage }
         message = if ($null -eq $Message) { '' } else { $Message }
@@ -125,7 +125,7 @@ function Publish-DiscoveryHostSignal {
         Set-ItemProperty -Path $Layout.HostSignalRegistryPath -Name 'AppCatalogueDiscoveryState' -Value $State -Type String -Force
         Set-ItemProperty -Path $Layout.HostSignalRegistryPath -Name 'AppCatalogueDiscoveryResultReady' -Value ($(if ($ResultReady) { 'true' } else { 'false' })) -Type String -Force
         Set-ItemProperty -Path $Layout.HostSignalRegistryPath -Name 'AppCatalogueDiscoveryJobId' -Value $JobId -Type String -Force
-        Set-ItemProperty -Path $Layout.HostSignalRegistryPath -Name 'AppCatalogueDiscoverySuccess' -Value ($(if ($null -eq $Success) { '' } elseif ($Success.Value) { 'true' } else { 'false' })) -Type String -Force
+        Set-ItemProperty -Path $Layout.HostSignalRegistryPath -Name 'AppCatalogueDiscoverySuccess' -Value ($(if ($null -eq $Success) { '' } elseif ([bool]$Success) { 'true' } else { 'false' })) -Type String -Force
         Set-ItemProperty -Path $Layout.HostSignalRegistryPath -Name 'AppCatalogueDiscoveryError' -Value $Error -Type String -Force
         Set-ItemProperty -Path $Layout.HostSignalRegistryPath -Name 'AppCatalogueDiscoveryResultPath' -Value $ResultPath -Type String -Force
         Set-ItemProperty -Path $Layout.HostSignalRegistryPath -Name 'AppCatalogueDiscoveryLogPath' -Value $LogPath -Type String -Force

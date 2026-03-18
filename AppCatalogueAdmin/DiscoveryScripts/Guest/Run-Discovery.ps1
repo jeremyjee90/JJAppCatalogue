@@ -569,7 +569,7 @@ function Build-SilentCandidatePlan {
             Add-Candidate -Candidates $candidates -Seen $seen -Arguments $PreferredSilentArguments -Source 'PreferredInput' -Reason 'Provided by app entry.' -BaseConfidence 0.70
         }
 
-        return @($candidates)
+        return $candidates.ToArray()
     }
 
     foreach ($helpCandidate in $HelpCandidates) {
@@ -610,7 +610,7 @@ function Build-SilentCandidatePlan {
     Add-Candidate -Candidates $candidates -Seen $seen -Arguments '/s' -Source 'GenericFallback' -Reason 'Generic /s fallback.' -BaseConfidence 0.42
     Add-Candidate -Candidates $candidates -Seen $seen -Arguments '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' -Source 'GenericFallback' -Reason 'Generic Inno-style fallback.' -BaseConfidence 0.44
 
-    return @($candidates)
+    return $candidates.ToArray()
 }
 
 function Get-ConfidenceLabel {
@@ -676,11 +676,11 @@ try {
     }
 
     $fingerprint = Get-InstallerFingerprint -InstallerPath $installerPath -HelpOutput $rawHelpOutput
-    $candidatePlan = Build-SilentCandidatePlan `
-        -InstallerType $installerType `
-        -PreferredSilentArguments $preferredArgs `
-        -Fingerprint $fingerprint `
-        -HelpCandidates $helpCandidates
+    $candidatePlan = @(Build-SilentCandidatePlan `
+            -InstallerType $installerType `
+            -PreferredSilentArguments $preferredArgs `
+            -Fingerprint $fingerprint `
+            -HelpCandidates $helpCandidates)
 
     $attemptHistory = @()
     $acceptedExitCodes = @(0, 3010, 1641)

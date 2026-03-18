@@ -117,7 +117,7 @@ while ($true) {
             }
             finally {
                 $script:suppressIdleSignalUntilUtc = (Get-Date).AddSeconds(120)
-                foreach ($cleanupFile in @($triggerPath, $lockPath)) {
+                foreach ($cleanupFile in @($triggerPath, $lockPath, $jobPath)) {
                     if (Test-Path $cleanupFile) {
                         try {
                             Remove-Item -Path $cleanupFile -Force -ErrorAction SilentlyContinue
