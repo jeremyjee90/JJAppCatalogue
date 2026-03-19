@@ -1248,7 +1248,7 @@ public partial class MainWindow : Window
     {
         _isDirty = dirty;
         DirtyIndicatorTextBlock.Text = dirty ? "* Unsaved changes" : string.Empty;
-        Title = dirty ? "Jee App Machine - AppCatalogue Admin *" : "Jee App Machine - AppCatalogue Admin";
+        Title = dirty ? "Simple Biz - AppCatalogue Admin *" : "Simple Biz - AppCatalogue Admin";
     }
 
     private void SetStatus(string message)
