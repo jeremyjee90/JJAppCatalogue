@@ -119,8 +119,7 @@ Behavior:
 - Supports multi-rule detection per app:
   - required `PrimaryDetection`
   - optional `SecondaryDetection` fallback
-- Includes `Explain Detection Rule`, `One-Click Discovery`, and `Accept Discovery Output` actions
-- `New App` opens a focused workspace view (catalogue list hidden) to reduce UI clutter during packaging
+- Includes `Explain Detection Rule`, `Test Detection`, and `One-Click Discovery` actions
 - Per discovery run, creates a host job folder with detailed logs/artifacts:
   - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\host.log`
   - `C:\ProgramData\AppCatalogue\Discovery\Jobs\<JobId>\status.json`
@@ -282,7 +281,7 @@ When tech clicks `One-Click Discovery` in `AppCatalogueAdmin`:
 
 - Build/maintain the packaging VM itself
 - Complete one-time in-guest bootstrap install
-- Review and confirm suggestions before clicking `Accept Discovery Output` / saving app config
+- Review and confirm suggestions before clicking `Apply Suggestions` / saving app config
 - Troubleshoot installer-specific edge cases where silent detection is inconclusive
 
 ### 6) Troubleshooting
@@ -293,11 +292,6 @@ When tech clicks `One-Click Discovery` in `AppCatalogueAdmin`:
   - add user to local `Hyper-V Administrators` group
   - sign out/in after group membership change
 - `Checkpoint not found`: ensure `CleanState` exists
-- `Start-VM` reports not enough memory / insufficient resources:
-  - discovery now attempts an automatic startup-memory fallback (default target: 2048 MB)
-  - if it still fails, close heavy host apps/VMs and retry
-  - in Hyper-V Manager, lower VM startup memory and recreate checkpoint `CleanState`
-  - ensure checkpoint restore is followed by cold boot (saved-state resumes can require higher memory)
 - Timeout waiting for results:
   - guest bootstrap task likely missing/not running
   - run `Install-DiscoveryBootstrap.ps1` again in guest

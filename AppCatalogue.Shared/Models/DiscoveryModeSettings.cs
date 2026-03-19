@@ -15,6 +15,4 @@ public sealed class DiscoveryModeSettings
     public int ProbeTimeoutSeconds { get; set; } = 15;
     public int InstallerTimeoutSeconds { get; set; } = 1200;
     public bool ShutdownVmOnComplete { get; set; } = true;
-    public bool AutoLowerVmStartupMemoryOnStartFailure { get; set; } = true;
-    public int FallbackVmStartupMemoryMb { get; set; } = 2048;
 }

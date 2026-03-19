@@ -472,74 +472,24 @@ public sealed class HyperVDiscoveryService
 
     private async Task StartVmAsync(DiscoveryModeSettings settings, CancellationToken cancellationToken)
     {
-        var fallbackStartupMb = Math.Max(1024, settings.FallbackVmStartupMemoryMb);
-        var autoLowerMemory = settings.AutoLowerVmStartupMemoryOnStartFailure ? "$true" : "$false";
         var script = """
         $ErrorActionPreference = 'Stop'
         Import-Module Hyper-V -ErrorAction Stop
         $vm = Get-VM -Name '__VM_NAME__' -ErrorAction Stop
-        $checkpointName = '__CHECKPOINT_NAME__'
-        $fallbackStartupMb = __FALLBACK_STARTUP_MB__
-        $autoLowerMemory = __AUTO_LOWER_MEMORY__
-
-        if ($vm.State -eq 'Saved') {
-            # Checkpoints with saved memory state can fail to resume on low-memory hosts.
-            # Force a cold boot from restored disk state.
-            Stop-VM -Name '__VM_NAME__' -TurnOff -Force -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
-            Start-Sleep -Seconds 2
-            $vm = Get-VM -Name '__VM_NAME__' -ErrorAction Stop
-        }
-
         if ($vm.State -ne 'Running') {
-            try {
-                Start-VM -Name '__VM_NAME__' -ErrorAction Stop | Out-Null
-            }
-            catch {
-                $startMessage = $_.Exception.Message
-                $isMemoryError = $startMessage -match '(?i)not enough memory|insufficient memory|failed to allocate|not enough system resources|0x8007000E'
-                if (-not $isMemoryError) {
-                    throw
-                }
-
-                $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
-                $hostFreeMb = if ($null -ne $os) { [int]($os.FreePhysicalMemory / 1024) } else { -1 }
-                $vmMemory = Get-VMMemory -VMName '__VM_NAME__' -ErrorAction Stop
-                $currentStartupMb = [int]($vmMemory.Startup / 1MB)
-
-                if ($autoLowerMemory -and $currentStartupMb -gt $fallbackStartupMb) {
-                    Set-VMMemory -VMName '__VM_NAME__' -StartupBytes (${fallbackStartupMb}MB) -ErrorAction Stop
-                    Start-Sleep -Milliseconds 750
-                    Start-VM -Name '__VM_NAME__' -ErrorAction Stop | Out-Null
-                    Write-Output "START_VM_MEMORY_FALLBACK_APPLIED:$currentStartupMb->$fallbackStartupMb;HostFreeMB=$hostFreeMb"
-                }
-                else {
-                    throw "VM start failed due host memory pressure. VM StartupMemory=${currentStartupMb}MB, HostFreeMemory=${hostFreeMb}MB. Close other apps/VMs or lower VM startup memory in Hyper-V settings, then recreate checkpoint '$checkpointName'. Original error: $startMessage"
-                }
-            }
+            Start-VM -Name '__VM_NAME__' -ErrorAction Stop | Out-Null
         }
         Enable-VMIntegrationService -VMName '__VM_NAME__' -Name 'Guest Service Interface' -ErrorAction SilentlyContinue | Out-Null
         Enable-VMIntegrationService -VMName '__VM_NAME__' -Name 'Key-Value Pair Exchange' -ErrorAction SilentlyContinue | Out-Null
         Enable-VMIntegrationService -VMName '__VM_NAME__' -Name 'Heartbeat' -ErrorAction SilentlyContinue | Out-Null
         """
-        .Replace("__VM_NAME__", EscapeForSingleQuotedPowerShell(settings.VmName), StringComparison.Ordinal)
-        .Replace("__CHECKPOINT_NAME__", EscapeForSingleQuotedPowerShell(settings.CheckpointName), StringComparison.Ordinal)
-        .Replace("__FALLBACK_STARTUP_MB__", fallbackStartupMb.ToString(), StringComparison.Ordinal)
-        .Replace("__AUTO_LOWER_MEMORY__", autoLowerMemory, StringComparison.Ordinal);
+        .Replace("__VM_NAME__", EscapeForSingleQuotedPowerShell(settings.VmName), StringComparison.Ordinal);
 
-        var result = await RunPowerShellAsync(script, settings.CommandTimeoutSeconds, cancellationToken);
-        if (result.ExitCode != 0)
-        {
-            var error = string.IsNullOrWhiteSpace(result.StandardError)
-                ? result.StandardOutput
-                : result.StandardError;
-            throw new InvalidOperationException($"Start-VM failed (exit {result.ExitCode}). {error}".Trim());
-        }
-
-        if (!string.IsNullOrWhiteSpace(result.StandardOutput) &&
-            result.StandardOutput.Contains("START_VM_MEMORY_FALLBACK_APPLIED", StringComparison.OrdinalIgnoreCase))
-        {
-            _logger.Log($"Hyper-V startup memory fallback applied for VM '{settings.VmName}'. {result.StandardOutput.Trim()}");
-        }
+        await RunPowerShellStepAsync(
+            script,
+            settings.CommandTimeoutSeconds,
+            "Start-VM",
+            cancellationToken);
     }
 
     private async Task WaitForGuestReadyAsync(
