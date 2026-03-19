@@ -937,8 +937,8 @@ public partial class MainWindow : Window
         DiscoveryGuestLogPathTextBox.Text = string.Empty;
         DiscoveryStageTextBlock.Text = "Current stage: Not started";
         DiscoveryFinalStageTextBlock.Text = "Final stage: Not started";
-        SetDiscoveryStateBadge("Ready", "#E4ECF5");
-        SetConfidenceBadge("-", "#E4ECF5");
+        SetDiscoveryStateBadge("Ready", "#E3EEF9");
+        SetConfidenceBadge("-", "#E3EEF9");
         _lastDetectionSuggestionResult = null;
         _lastHyperVDiscoveryResult = null;
 
@@ -987,8 +987,8 @@ public partial class MainWindow : Window
         DiscoveryGuestLogPathTextBox.Text = string.Empty;
         DiscoveryStageTextBlock.Text = "Current stage: Not started";
         DiscoveryFinalStageTextBlock.Text = "Final stage: Not started";
-        SetDiscoveryStateBadge("Ready", "#E4ECF5");
-        SetConfidenceBadge("-", "#E4ECF5");
+        SetDiscoveryStateBadge("Ready", "#E3EEF9");
+        SetConfidenceBadge("-", "#E3EEF9");
         _lastDetectionSuggestionResult = null;
         _lastHyperVDiscoveryResult = null;
         _lastImportedRepositoryFolder = string.Empty;
@@ -1144,7 +1144,9 @@ public partial class MainWindow : Window
 
     private void SetDropZoneHighlight(bool highlighted)
     {
-        ImportDropZone.BorderBrush = highlighted ? Brushes.DodgerBlue : new SolidColorBrush(Color.FromRgb(0x76, 0xA3, 0xD8));
+        ImportDropZone.BorderBrush = highlighted
+            ? new SolidColorBrush(Color.FromRgb(0x12, 0x3A, 0x69))
+            : new SolidColorBrush(Color.FromRgb(0x8E, 0xB6, 0xDF));
         DropZoneTextBlock.Text = highlighted
             ? "Release to import installer into repository"
             : "Drag and drop .exe or .msi installer files here";

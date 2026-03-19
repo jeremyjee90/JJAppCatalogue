@@ -55,8 +55,8 @@ public partial class MainWindow
             _isDiscoveryRunning = true;
             _lastHyperVDiscoveryResult = null;
             ResetDiscoveryDiagnosticsUi();
-            SetDiscoveryStateBadge("In Progress", "#1B73C7");
-            SetConfidenceBadge("-", "#7A8797");
+            SetDiscoveryStateBadge("In Progress", "#123A69");
+            SetConfidenceBadge("-", "#E3EEF9");
             UpdateSourceTypeUi();
 
             var settings = BuildDiscoverySettingsFromUi();
@@ -285,18 +285,18 @@ public partial class MainWindow
     private void SetDiscoveryStateBadge(string text, string backgroundHex)
     {
         DiscoveryStateBadgeTextBlock.Text = text;
-        DiscoveryStateBadgeBorder.Background = BrushFromHex(backgroundHex, "#E4ECF5");
+        DiscoveryStateBadgeBorder.Background = BrushFromHex(backgroundHex, "#E3EEF9");
         DiscoveryStateBadgeTextBlock.Foreground = text.Equals("Ready", StringComparison.OrdinalIgnoreCase) || text.Equals("-", StringComparison.OrdinalIgnoreCase)
-            ? BrushFromHex("#23405D", "#23405D")
+            ? BrushFromHex("#123A69", "#123A69")
             : BrushFromHex("#FFFFFF", "#FFFFFF");
     }
 
     private void SetConfidenceBadge(string text, string backgroundHex)
     {
         DiscoveryConfidenceBadgeTextBlock.Text = text;
-        DiscoveryConfidenceBadgeBorder.Background = BrushFromHex(backgroundHex, "#E4ECF5");
+        DiscoveryConfidenceBadgeBorder.Background = BrushFromHex(backgroundHex, "#E3EEF9");
         DiscoveryConfidenceBadgeTextBlock.Foreground = text.Equals("-", StringComparison.OrdinalIgnoreCase)
-            ? BrushFromHex("#23405D", "#23405D")
+            ? BrushFromHex("#123A69", "#123A69")
             : BrushFromHex("#FFFFFF", "#FFFFFF");
     }
 

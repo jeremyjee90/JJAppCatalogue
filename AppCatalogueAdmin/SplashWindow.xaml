@@ -1,0 +1,65 @@
+<Window x:Class="AppCatalogueAdmin.SplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Jee App Machine"
+        Width="560"
+        Height="260"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        WindowStartupLocation="CenterScreen">
+    <Border CornerRadius="16"
+            Background="#FFFFFF"
+            BorderBrush="#B9D0EA"
+            BorderThickness="1.5"
+            Padding="22">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Background="#123A69"
+                    CornerRadius="10"
+                    Padding="10,8"
+                    HorizontalAlignment="Left">
+                <TextBlock Text="Jee App Machine"
+                           Foreground="White"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Margin="6,0" />
+            </Border>
+
+            <StackPanel Grid.Row="1"
+                        Margin="0,20,0,12"
+                        VerticalAlignment="Center">
+                <TextBlock Text="AppCatalogue Admin"
+                           FontSize="28"
+                           FontWeight="Bold"
+                           Foreground="#123A69"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="Loading packaging console..."
+                           Margin="0,8,0,0"
+                           HorizontalAlignment="Center"
+                           Foreground="#4A6483"
+                           FontSize="14" />
+            </StackPanel>
+
+            <Border Grid.Row="2"
+                    Height="8"
+                    CornerRadius="4"
+                    Background="#E3EEF9">
+                <Rectangle Fill="#9CC3EC"
+                           RadiusX="4"
+                           RadiusY="4"
+                           HorizontalAlignment="Left"
+                           Width="380" />
+            </Border>
+        </Grid>
+    </Border>
+</Window>
