@@ -516,30 +516,6 @@ public partial class MainWindow : Window
         UpdateDetectionExplanation();
     }
 
-    private void TestDetectionButton_Click(object sender, RoutedEventArgs e)
-    {
-        var app = BuildSuggestionContextEntry();
-        if (!AppValidator.TryValidate(app, out var validationError))
-        {
-            ShowValidation(validationError);
-            return;
-        }
-
-        try
-        {
-            var result = _detectionService.EvaluateApp(app);
-            DetectionTestResultTextBox.Text = BuildDetectionTestOutput(result);
-            SetStatus(result.IsInstalled ? "Detection test: PASS" : "Detection test: FAIL");
-            _logger.Log($"{app.Name}: detection test completed. Pass={result.IsInstalled}.");
-        }
-        catch (Exception ex)
-        {
-            DetectionTestResultTextBox.Text = $"Detection test failed: {ex.Message}";
-            SetStatus("Detection test failed.");
-            _logger.Log($"{app.Name}: detection test failed - {ex.Message}");
-        }
-    }
-
     private async void DiscoveryModeButton_Click(object sender, RoutedEventArgs e)
     {
         await RunHyperVDiscoveryAsync();
@@ -611,8 +587,6 @@ public partial class MainWindow : Window
             else
             {
                 SetStatus("No reliable detection suggestion found. Configure detection manually.");
-                DetectionTestResultTextBox.Text =
-                    "No reliable detection rule could be suggested automatically. Please configure detection manually.";
             }
         }
         catch (Exception ex)
@@ -950,7 +924,6 @@ public partial class MainWindow : Window
         DetectionSuggestionsListBox.ItemsSource = null;
         DetectionSuggestionSummaryTextBlock.Text = string.Empty;
         DetectionExplanationTextBox.Text = string.Empty;
-        DetectionTestResultTextBox.Text = string.Empty;
         DiscoveryProgressTextBox.Text = string.Empty;
         DiscoveryResultSummaryTextBlock.Text = string.Empty;
         DiscoveryRecommendedCommandTextBox.Text = string.Empty;
@@ -1001,7 +974,6 @@ public partial class MainWindow : Window
         DetectionSuggestionsListBox.ItemsSource = null;
         DetectionSuggestionSummaryTextBlock.Text = string.Empty;
         DetectionExplanationTextBox.Text = string.Empty;
-        DetectionTestResultTextBox.Text = string.Empty;
         DiscoveryProgressTextBox.Text = string.Empty;
         DiscoveryResultSummaryTextBlock.Text = string.Empty;
         DiscoveryRecommendedCommandTextBox.Text = string.Empty;
@@ -1040,7 +1012,6 @@ public partial class MainWindow : Window
         ImportInstallerButton.IsEnabled = !isWinget;
         DetectSilentSwitchesButton.IsEnabled = !isWinget;
         DiscoveryModeButton.IsEnabled = discoveryEnabled;
-        ApplyDiscoverySuggestionsButton.IsEnabled = !isWinget && !_isDiscoveryRunning && _lastHyperVDiscoveryResult is not null;
         OpenDiscoveryJobFolderButton.IsEnabled = hasDiscoveryResult;
         OpenDiscoveryLogsFolderButton.IsEnabled = hasDiscoveryResult || File.Exists(AppPaths.AdminLogPath);
         ImportDropZone.IsEnabled = !isWinget;
@@ -1129,38 +1100,6 @@ public partial class MainWindow : Window
         }
 
         DetectionExplanationTextBox.Text = explanation;
-    }
-
-    private string BuildDetectionTestOutput(DetectionEvaluationResult result)
-    {
-        var lines = new List<string>
-        {
-            $"Overall Result: {(result.IsInstalled ? "PASS" : "FAIL")}",
-            result.Summary,
-            string.Empty
-        };
-
-        foreach (var rule in result.RuleResults)
-        {
-            lines.Add($"{rule.RuleName}: {(rule.Passed ? "PASS" : "FAIL")}");
-            lines.Add($"Type: {rule.DetectionType}");
-            lines.Add($"Value: {rule.DetectionValue}");
-            if (!string.IsNullOrWhiteSpace(rule.MatchLocation))
-            {
-                lines.Add($"Match Location: {rule.MatchLocation}");
-            }
-
-            lines.Add($"Detail: {rule.Detail}");
-            if (rule.CheckedLocations.Count > 0)
-            {
-                lines.Add("Checked Locations:");
-                lines.AddRange(rule.CheckedLocations.Select(location => $"  - {location}"));
-            }
-
-            lines.Add(string.Empty);
-        }
-
-        return string.Join(Environment.NewLine, lines);
     }
 
     private void HandleDragFeedback(DragEventArgs e)
