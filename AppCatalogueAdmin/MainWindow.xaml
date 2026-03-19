@@ -49,6 +49,24 @@
             <Setter Property="Background" Value="{StaticResource SecondaryButtonBrush}" />
         </Style>
 
+        <Style x:Key="HeroActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+            <Setter Property="Padding" Value="18,10" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+
+        <Style x:Key="BadgeBorderStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="Background" Value="#E4ECF5" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+
+        <Style x:Key="BadgeTextStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#23405D" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+
         <Style x:Key="LabelStyle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
@@ -143,7 +161,6 @@
                                 <StackPanel Orientation="Horizontal">
                                     <Button x:Name="ImportInstallerButton" Content="Import Installer" Width="128" Click="ImportInstallerButton_Click" Style="{StaticResource ActionButtonStyle}" />
                                     <Button Content="Browse Installer" Width="130" Click="BrowseInstallerButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
-                                    <Button x:Name="DetectSilentSwitchesButton" Content="Detect Silent Switches" Width="156" Click="DetectSilentSwitchesButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
                                 </StackPanel>
                                 <Border x:Name="ImportDropZone"
                                         Background="{StaticResource DropZoneBrush}"
@@ -225,7 +242,25 @@
 
                         <GroupBox Header="Detection Suggestions" FontWeight="SemiBold" Margin="0,0,0,8">
                             <StackPanel Margin="8">
-                                <StackPanel Orientation="Horizontal">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Button x:Name="DiscoveryModeButton"
+                                            Content="One-Click Discovery"
+                                            Width="220"
+                                            Style="{StaticResource HeroActionButtonStyle}"
+                                            Click="DiscoveryModeButton_Click"
+                                            />
+                                    <Button x:Name="OpenDiscoveryLogsFolderButton"
+                                            Content="Open Logs"
+                                            Width="112"
+                                            Click="OpenDiscoveryLogsFolderButton_Click"
+                                            Style="{StaticResource SecondaryButtonStyle}" />
+                                    <Button x:Name="OpenDiscoveryJobFolderButton"
+                                            Content="Open Job Folder"
+                                            Width="128"
+                                            Click="OpenDiscoveryJobFolderButton_Click"
+                                            Style="{StaticResource SecondaryButtonStyle}" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                     <Button x:Name="SuggestDetectionRuleButton"
                                             Content="Suggest Detection Rule"
                                             Width="152"
@@ -242,18 +277,144 @@
                                             Click="SetSecondarySuggestionButton_Click"
                                             Style="{StaticResource SecondaryButtonStyle}" />
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <Button x:Name="TestDetectionButton"
-                                            Content="Test Detection"
-                                            Width="118"
-                                            Click="TestDetectionButton_Click"
-                                            Style="{StaticResource SecondaryButtonStyle}" />
-                                    <Button x:Name="DiscoveryModeButton"
-                                            Content="Discovery Mode"
-                                            Width="118"
-                                            Click="DiscoveryModeButton_Click"
-                                            Style="{StaticResource SecondaryButtonStyle}" />
-                                </StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="80" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="VM Name"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource LabelStyle}"
+                                               Margin="0,0,6,0" />
+                                    <TextBox x:Name="VmNameTextBox"
+                                             Grid.Column="1"
+                                             Margin="0,0,8,0" />
+                                    <TextBlock Grid.Column="2"
+                                               Text="Checkpoint"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource LabelStyle}"
+                                               Margin="0,0,6,0" />
+                                    <TextBox x:Name="CheckpointNameTextBox"
+                                             Grid.Column="3"
+                                             Margin="0" />
+                                </Grid>
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Discovery State"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource LabelStyle}"
+                                               Margin="0,0,6,0" />
+                                    <Border x:Name="DiscoveryStateBadgeBorder" Style="{StaticResource BadgeBorderStyle}">
+                                        <TextBlock x:Name="DiscoveryStateBadgeTextBlock"
+                                                   Text="Ready"
+                                                   Style="{StaticResource BadgeTextStyle}" />
+                                    </Border>
+                                    <TextBlock Text="Confidence"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource LabelStyle}"
+                                               Margin="0,0,6,0" />
+                                    <Border x:Name="DiscoveryConfidenceBadgeBorder" Style="{StaticResource BadgeBorderStyle}">
+                                        <TextBlock x:Name="DiscoveryConfidenceBadgeTextBlock"
+                                                   Text="-"
+                                                   Style="{StaticResource BadgeTextStyle}" />
+                                    </Border>
+                                </DockPanel>
+                                <TextBlock x:Name="DiscoveryStageTextBlock"
+                                           Text="Current stage: Not started"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,2" />
+                                <TextBlock x:Name="DiscoveryFinalStageTextBlock"
+                                           Text="Final stage: Not started"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,6" />
+                                <TextBlock Text="Successful discovery auto-applies high-confidence silent arguments and detection rules."
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,8"
+                                           TextWrapping="Wrap" />
+                                <TextBlock x:Name="DiscoveryResultSummaryTextBlock"
+                                           TextWrapping="Wrap"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,6" />
+                                <TextBlock Text="Recommended Silent Command"
+                                           Style="{StaticResource LabelStyle}" />
+                                <TextBox x:Name="DiscoveryRecommendedCommandTextBox"
+                                         Height="58"
+                                         IsReadOnly="True"
+                                         Background="#F7FAFD"
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         Margin="0,0,0,8" />
+                                <TextBlock Text="Silent Suggestions"
+                                           Style="{StaticResource LabelStyle}" />
+                                <ListBox x:Name="DiscoverySilentSuggestionsListBox"
+                                         Height="84"
+                                         Margin="0,0,0,8" />
+                                <TextBlock Text="Recommended Primary Detection"
+                                           Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="DiscoveryPrimaryRecommendationTextBlock"
+                                           TextWrapping="Wrap"
+                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                           Margin="0,0,0,6" />
+                                <TextBlock Text="Recommended Secondary Detection"
+                                           Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="DiscoverySecondaryRecommendationTextBlock"
+                                           TextWrapping="Wrap"
+                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                           Margin="0,0,0,6" />
+                                <Expander Header="Discovery Details (Logs, Progress, Evidence)" IsExpanded="False" Margin="0,2,0,8">
+                                    <StackPanel Margin="0,8,0,0">
+                                        <TextBlock Text="Host Job Folder"
+                                                   Style="{StaticResource LabelStyle}" />
+                                        <TextBox x:Name="DiscoveryHostJobPathTextBox"
+                                                 IsReadOnly="True"
+                                                 Background="#F7FAFD"
+                                                 HorizontalScrollBarVisibility="Auto"
+                                                 Margin="0,0,0,4" />
+                                        <TextBlock Text="Host Log Path"
+                                                   Style="{StaticResource LabelStyle}" />
+                                        <TextBox x:Name="DiscoveryHostLogPathTextBox"
+                                                 IsReadOnly="True"
+                                                 Background="#F7FAFD"
+                                                 HorizontalScrollBarVisibility="Auto"
+                                                 Margin="0,0,0,4" />
+                                        <TextBlock Text="Guest Log Path"
+                                                   Style="{StaticResource LabelStyle}" />
+                                        <TextBox x:Name="DiscoveryGuestLogPathTextBox"
+                                                 IsReadOnly="True"
+                                                 Background="#F7FAFD"
+                                                 HorizontalScrollBarVisibility="Auto"
+                                                 Margin="0,0,0,8" />
+                                        <TextBlock Text="Discovery Progress"
+                                                   Style="{StaticResource LabelStyle}" />
+                                        <TextBox x:Name="DiscoveryProgressTextBox"
+                                                 Height="116"
+                                                 IsReadOnly="True"
+                                                 Background="#F7FAFD"
+                                                 TextWrapping="Wrap"
+                                                 AcceptsReturn="True"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 Margin="0,0,0,8" />
+                                        <TextBlock Text="Silent Attempt History"
+                                                   Style="{StaticResource LabelStyle}" />
+                                        <ListBox x:Name="DiscoveryAttemptHistoryListBox"
+                                                 Height="130"
+                                                 Margin="0,0,0,8" />
+                                        <TextBlock Text="Discovery Evidence"
+                                                   Style="{StaticResource LabelStyle}" />
+                                        <TextBox x:Name="DiscoveryEvidenceTextBox"
+                                                 Height="120"
+                                                 IsReadOnly="True"
+                                                 Background="#F7FAFD"
+                                                 TextWrapping="Wrap"
+                                                 AcceptsReturn="True"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 Margin="0,0,0,8" />
+                                    </StackPanel>
+                                </Expander>
                                 <ListBox x:Name="DetectionSuggestionsListBox"
                                          Height="112"
                                          SelectionChanged="DetectionSuggestionsListBox_SelectionChanged" />
@@ -270,33 +431,31 @@
                                              AcceptsReturn="True"
                                              VerticalScrollBarVisibility="Auto" />
                                 </GroupBox>
-                                <TextBox x:Name="DetectionTestResultTextBox"
-                                         Height="120"
+                            </StackPanel>
+                        </GroupBox>
+
+                        <Expander Header="Manual Override Tools (Advanced)" IsExpanded="False">
+                            <StackPanel Margin="0,8,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="DetectSilentSwitchesButton" Content="Detect Silent Switches" Width="156" Click="DetectSilentSwitchesButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
+                                </StackPanel>
+                                <TextBlock Text="Command Preview" Style="{StaticResource LabelStyle}" Margin="0,8,0,0" />
+                                <TextBox x:Name="CommandPreviewTextBox" Height="52" IsReadOnly="True" Background="#F7FAFD" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                                <StackPanel Orientation="Horizontal">
+                                    <ComboBox x:Name="SuggestionComboBox" Width="360" SelectionChanged="SuggestionComboBox_SelectionChanged" />
+                                    <Button Content="Accept Suggestion" Width="130" Click="AcceptSuggestionButton_Click" Style="{StaticResource ActionButtonStyle}" />
+                                </StackPanel>
+                                <TextBlock x:Name="ProbeSummaryTextBlock" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,2,0,8" />
+                                <TextBox x:Name="ProbeOutputTextBox"
+                                         Height="180"
                                          IsReadOnly="True"
                                          Background="#F7FAFD"
                                          TextWrapping="Wrap"
                                          AcceptsReturn="True"
                                          VerticalScrollBarVisibility="Auto"
-                                         Margin="0,8,0,0" />
+                                         HorizontalScrollBarVisibility="Auto" />
                             </StackPanel>
-                        </GroupBox>
-
-                        <TextBlock Text="Command Preview" Style="{StaticResource LabelStyle}" Margin="0,8,0,0" />
-                        <TextBox x:Name="CommandPreviewTextBox" Height="52" IsReadOnly="True" Background="#F7FAFD" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
-
-                        <StackPanel Orientation="Horizontal">
-                            <ComboBox x:Name="SuggestionComboBox" Width="360" SelectionChanged="SuggestionComboBox_SelectionChanged" />
-                            <Button Content="Accept Suggestion" Width="130" Click="AcceptSuggestionButton_Click" Style="{StaticResource ActionButtonStyle}" />
-                        </StackPanel>
-                        <TextBlock x:Name="ProbeSummaryTextBlock" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,2,0,8" />
-                        <TextBox x:Name="ProbeOutputTextBox"
-                                 Height="180"
-                                 IsReadOnly="True"
-                                 Background="#F7FAFD"
-                                 TextWrapping="Wrap"
-                                 AcceptsReturn="True"
-                                 VerticalScrollBarVisibility="Auto"
-                                 HorizontalScrollBarVisibility="Auto" />
+                        </Expander>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

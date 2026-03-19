@@ -3,6 +3,13 @@
     <ProjectReference Include="..\AppCatalogue.Shared\AppCatalogue.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="DiscoveryScripts\**\*.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
