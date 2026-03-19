@@ -125,6 +125,25 @@ public partial class MainWindow
         DiscoveryFinalStageTextBlock.Text = "Final stage: Not started";
     }
 
+    private void AcceptDiscoveryOutputButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_lastHyperVDiscoveryResult?.DiscoveryResult is null)
+        {
+            ShowValidation("Run One-Click Discovery first.");
+            return;
+        }
+
+        if (ApplyDiscoverySuggestions(_lastHyperVDiscoveryResult.DiscoveryResult, highConfidenceOnly: false, out var summary))
+        {
+            DiscoveryResultSummaryTextBlock.Text += Environment.NewLine + summary;
+            SetStatus("Discovery output accepted and applied to manual fields.");
+        }
+        else
+        {
+            SetStatus("No discovery output values were available to apply.");
+        }
+    }
+
     private void AppendDiscoveryProgress(DiscoveryProgressUpdate update)
     {
         var localTime = update.TimestampUtc.ToLocalTime().ToString("HH:mm:ss");
@@ -324,10 +343,18 @@ public partial class MainWindow
 
     private bool TryAutoApplyDiscoverySuggestions(HyperVDiscoveryResult result, out string summary)
     {
+        return ApplyDiscoverySuggestions(result, highConfidenceOnly: true, out summary);
+    }
+
+    private bool ApplyDiscoverySuggestions(HyperVDiscoveryResult result, bool highConfidenceOnly, out string summary)
+    {
         var applied = new List<string>();
         var changed = false;
 
-        var recommendedArguments = GetHighConfidenceSilentArguments(result);
+        var recommendedArguments = highConfidenceOnly
+            ? GetHighConfidenceSilentArguments(result)
+            : GetBestAvailableSilentArguments(result);
+
         if (!string.IsNullOrWhiteSpace(recommendedArguments) &&
             !string.Equals(SilentArgumentsTextBox.Text.Trim(), recommendedArguments, StringComparison.OrdinalIgnoreCase))
         {
@@ -336,7 +363,12 @@ public partial class MainWindow
             changed = true;
         }
 
-        if (TryGetDetectionCandidate(result.PrimaryDetection, allowMediumConfidence: true, out var primaryType, out var primaryValue))
+        if (TryGetDetectionCandidate(
+                result.PrimaryDetection,
+                allowMediumConfidence: true,
+                allowLowConfidence: !highConfidenceOnly,
+                out var primaryType,
+                out var primaryValue))
         {
             if (DetectionTypeComboBox.SelectedItem is not DetectionType selectedPrimaryType ||
                 selectedPrimaryType != primaryType ||
@@ -349,7 +381,12 @@ public partial class MainWindow
             }
         }
 
-        if (TryGetDetectionCandidate(result.SecondaryDetection, allowMediumConfidence: false, out var secondaryType, out var secondaryValue))
+        if (TryGetDetectionCandidate(
+                result.SecondaryDetection,
+                allowMediumConfidence: !highConfidenceOnly,
+                allowLowConfidence: !highConfidenceOnly,
+                out var secondaryType,
+                out var secondaryValue))
         {
             if (SecondaryDetectionTypeComboBox.SelectedItem is not DetectionType selectedSecondaryType ||
                 selectedSecondaryType != secondaryType ||
@@ -364,7 +401,9 @@ public partial class MainWindow
 
         if (!changed)
         {
-            summary = "No obvious high-confidence values were auto-applied.";
+            summary = highConfidenceOnly
+                ? "No obvious high-confidence values were auto-applied."
+                : "Discovery output did not provide new values to apply.";
             return false;
         }
 
@@ -372,7 +411,8 @@ public partial class MainWindow
         UpdateCommandPreview();
         UpdateDetectionExplanation();
 
-        summary = "Auto-applied from discovery: " + string.Join(" ", applied);
+        summary = (highConfidenceOnly ? "Auto-applied from discovery: " : "Accepted discovery output: ") +
+                  string.Join(" ", applied);
         return true;
     }
 
@@ -396,9 +436,25 @@ public partial class MainWindow
             .FirstOrDefault() ?? string.Empty;
     }
 
+    private static string GetBestAvailableSilentArguments(HyperVDiscoveryResult result)
+    {
+        if (result.SilentRecommendation is not null &&
+            !string.IsNullOrWhiteSpace(result.SilentRecommendation.RecommendedArguments))
+        {
+            return result.SilentRecommendation.RecommendedArguments.Trim();
+        }
+
+        return result.SilentSwitchSuggestions
+            .Where(suggestion => !string.IsNullOrWhiteSpace(suggestion.Arguments))
+            .OrderByDescending(suggestion => ConfidenceScore(suggestion.Confidence))
+            .Select(suggestion => suggestion.Arguments.Trim())
+            .FirstOrDefault() ?? string.Empty;
+    }
+
     private static bool TryGetDetectionCandidate(
         DetectionRecommendation? recommendation,
         bool allowMediumConfidence,
+        bool allowLowConfidence,
         out DetectionType detectionType,
         out string detectionValue)
     {
@@ -414,7 +470,8 @@ public partial class MainWindow
 
         var confidence = recommendation.Confidence ?? string.Empty;
         if (!IsHighConfidence(confidence) &&
-            (!allowMediumConfidence || !confidence.Equals("Medium", StringComparison.OrdinalIgnoreCase)))
+            (!allowMediumConfidence || !confidence.Equals("Medium", StringComparison.OrdinalIgnoreCase)) &&
+            (!allowLowConfidence || !confidence.Equals("Low", StringComparison.OrdinalIgnoreCase)))
         {
             return false;
         }

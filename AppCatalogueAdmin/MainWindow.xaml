@@ -124,12 +124,12 @@
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1.03*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="1.07*" />
+                <ColumnDefinition x:Name="CatalogueListColumn" Width="1.03*" />
+                <ColumnDefinition x:Name="CatalogueSpacerColumn" Width="12" />
+                <ColumnDefinition x:Name="EditorColumn" Width="1.07*" />
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+            <Border x:Name="CatalogueListPanel" Grid.Column="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -159,9 +159,35 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+            <Border x:Name="EditorPanel" Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
+                        <Border x:Name="NewAppWorkspaceBanner"
+                                Visibility="Collapsed"
+                                Background="#E9F3FE"
+                                BorderBrush="#BBD3EB"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="10"
+                                Margin="0,0,0,10">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Left">
+                                    <TextBlock Text="New App Workspace"
+                                               FontWeight="Bold"
+                                               FontSize="15"
+                                               Foreground="{StaticResource PrimaryTextBrush}" />
+                                    <TextBlock Text="Run One-Click Discovery first, review output, then accept and fine-tune manual inputs."
+                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                </StackPanel>
+                                <Button x:Name="BackToCatalogueButton"
+                                        Content="Back To Catalogue"
+                                        Width="150"
+                                        Height="34"
+                                        DockPanel.Dock="Right"
+                                        Click="BackToCatalogueButton_Click"
+                                        Style="{StaticResource SecondaryButtonStyle}" />
+                            </DockPanel>
+                        </Border>
                         <GroupBox Header="Installer Import" FontWeight="SemiBold" Margin="0,0,0,10">
                             <StackPanel Margin="8">
                                 <StackPanel Orientation="Horizontal">
@@ -188,7 +214,11 @@
                             </StackPanel>
                         </GroupBox>
 
-                        <Grid>
+                        <Expander x:Name="ManualInputsExpander"
+                                  Header="Manual App Inputs"
+                                  IsExpanded="True"
+                                  Margin="0,0,0,10">
+                            <Grid Margin="8,8,8,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="170" />
                                 <ColumnDefinition Width="*" />
@@ -244,7 +274,8 @@
                             <Button x:Name="BrowseIconPathButton" Grid.Row="13" Grid.Column="2" Content="Browse" Width="78" Height="33" Click="BrowseIconButton_Click" Style="{StaticResource SecondaryButtonStyle}" />
                             <TextBlock Grid.Row="14" Grid.Column="0" Text="Requires Admin" Style="{StaticResource LabelStyle}" />
                             <CheckBox x:Name="RequiresAdminCheckBox" Grid.Row="14" Grid.Column="1" Margin="0,4,0,10" Checked="EditorField_CheckChanged" Unchecked="EditorField_CheckChanged" />
-                        </Grid>
+                            </Grid>
+                        </Expander>
 
                         <GroupBox Header="Detection Suggestions" FontWeight="SemiBold" Margin="0,0,0,8">
                             <StackPanel Margin="8">
@@ -371,6 +402,20 @@
                                            TextWrapping="Wrap"
                                            Foreground="{StaticResource PrimaryTextBrush}"
                                            Margin="0,0,0,6" />
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
+                                    <Button x:Name="AcceptDiscoveryOutputButton"
+                                            Content="Accept Discovery Output"
+                                            Width="220"
+                                            Height="38"
+                                            Click="AcceptDiscoveryOutputButton_Click"
+                                            Style="{StaticResource ActionButtonStyle}" />
+                                    <Button x:Name="EditManualInputsButton"
+                                            Content="Edit Manual Inputs"
+                                            Width="170"
+                                            Height="38"
+                                            Click="EditManualInputsButton_Click"
+                                            Style="{StaticResource SecondaryButtonStyle}" />
+                                </StackPanel>
                                 <Expander Header="Discovery Details (Logs, Progress, Evidence)" IsExpanded="False" Margin="0,2,0,8">
                                     <StackPanel Margin="0,8,0,0">
                                         <TextBlock Text="Host Job Folder"

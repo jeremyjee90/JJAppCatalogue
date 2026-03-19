@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private bool _isDirty;
     private bool _isLoadingState;
     private bool _isDiscoveryRunning;
+    private bool _isNewAppWorkspaceMode;
     private string _lastImportedRepositoryFolder = string.Empty;
     private DetectionSuggestionResult? _lastDetectionSuggestionResult;
     private HyperVDiscoveryRunResult? _lastHyperVDiscoveryResult;
@@ -59,6 +60,7 @@ public partial class MainWindow : Window
         _appsView = CollectionViewSource.GetDefaultView(_apps);
         _appsView.Filter = FilterApps;
         AppsDataGrid.ItemsSource = _appsView;
+        UpdateWorkspaceLayout();
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -86,6 +88,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        ExitNewAppWorkspace();
         PopulateEditor(selected);
         SetStatus($"Editing: {selected.Name}");
     }
@@ -93,8 +96,9 @@ public partial class MainWindow : Window
     private void NewAppButton_Click(object sender, RoutedEventArgs e)
     {
         AppsDataGrid.SelectedItem = null;
+        EnterNewAppWorkspace();
         ClearEditor();
-        SetStatus("New app template ready.");
+        SetStatus("New app workspace ready. Import installer and run One-Click Discovery.");
     }
 
     private void SaveAppButton_Click(object sender, RoutedEventArgs e)
@@ -130,8 +134,15 @@ public partial class MainWindow : Window
 
             _apps.Add(app);
             _appsView.Refresh();
-            AppsDataGrid.SelectedItem = app;
-            SetStatus($"Added app: {app.Name}");
+            if (_isNewAppWorkspaceMode)
+            {
+                SetStatus($"Added app: {app.Name}. Continue reviewing discovery output or click Back To Catalogue.");
+            }
+            else
+            {
+                AppsDataGrid.SelectedItem = app;
+                SetStatus($"Added app: {app.Name}");
+            }
         }
 
         MarkDirty(true);
@@ -1012,6 +1023,8 @@ public partial class MainWindow : Window
         ImportInstallerButton.IsEnabled = !isWinget;
         DetectSilentSwitchesButton.IsEnabled = !isWinget;
         DiscoveryModeButton.IsEnabled = discoveryEnabled;
+        AcceptDiscoveryOutputButton.IsEnabled = !isWinget && !_isDiscoveryRunning && _lastHyperVDiscoveryResult is not null;
+        EditManualInputsButton.IsEnabled = !_isDiscoveryRunning;
         OpenDiscoveryJobFolderButton.IsEnabled = hasDiscoveryResult;
         OpenDiscoveryLogsFolderButton.IsEnabled = hasDiscoveryResult || File.Exists(AppPaths.AdminLogPath);
         ImportDropZone.IsEnabled = !isWinget;
@@ -1235,12 +1248,67 @@ public partial class MainWindow : Window
     {
         _isDirty = dirty;
         DirtyIndicatorTextBlock.Text = dirty ? "* Unsaved changes" : string.Empty;
-        Title = dirty ? "AppCatalogueAdmin *" : "AppCatalogueAdmin";
+        Title = dirty ? "Jee App Machine - AppCatalogue Admin *" : "Jee App Machine - AppCatalogue Admin";
     }
 
     private void SetStatus(string message)
     {
         StatusTextBlock.Text = message;
+    }
+
+    private void EnterNewAppWorkspace()
+    {
+        _isNewAppWorkspaceMode = true;
+        UpdateWorkspaceLayout();
+    }
+
+    private void ExitNewAppWorkspace()
+    {
+        _isNewAppWorkspaceMode = false;
+        UpdateWorkspaceLayout();
+    }
+
+    private void BackToCatalogueButton_Click(object sender, RoutedEventArgs e)
+    {
+        ExitNewAppWorkspace();
+        if (_apps.Count > 0 && AppsDataGrid.SelectedItem is null)
+        {
+            AppsDataGrid.SelectedIndex = 0;
+        }
+    }
+
+    private void UpdateWorkspaceLayout()
+    {
+        NewAppWorkspaceBanner.Visibility = _isNewAppWorkspaceMode ? Visibility.Visible : Visibility.Collapsed;
+        CatalogueListPanel.Visibility = _isNewAppWorkspaceMode ? Visibility.Collapsed : Visibility.Visible;
+        EditManualInputsButton.Visibility = _isNewAppWorkspaceMode ? Visibility.Visible : Visibility.Collapsed;
+        ManualInputsExpander.Visibility = _isNewAppWorkspaceMode ? Visibility.Collapsed : Visibility.Visible;
+        if (_isNewAppWorkspaceMode)
+        {
+            ManualInputsExpander.IsExpanded = false;
+        }
+        else
+        {
+            ManualInputsExpander.IsExpanded = true;
+        }
+
+        CatalogueListColumn.Width = _isNewAppWorkspaceMode
+            ? new GridLength(0)
+            : new GridLength(1.03, GridUnitType.Star);
+        CatalogueSpacerColumn.Width = _isNewAppWorkspaceMode
+            ? new GridLength(0)
+            : new GridLength(12);
+        EditorColumn.Width = _isNewAppWorkspaceMode
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(1.07, GridUnitType.Star);
+    }
+
+    private void EditManualInputsButton_Click(object sender, RoutedEventArgs e)
+    {
+        ManualInputsExpander.Visibility = Visibility.Visible;
+        ManualInputsExpander.IsExpanded = true;
+        ManualInputsExpander.BringIntoView();
+        SetStatus("Manual input fields opened. You can edit all values manually.");
     }
 
     protected override void OnClosing(CancelEventArgs e)
